@@ -1,0 +1,11 @@
+{
+    "version": "1.0.0",
+    "last_updated": "2024-03-19",
+    "core_files": [
+        "wallet.py",
+        "blockchain.py",
+        "miner.py",
+        "app.py",
+        "modules/encryption/encryption.py"
+    ]
+} 
