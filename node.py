@@ -32,7 +32,7 @@ class Node:
         self.blockchain = Blockchain()
         self.peer_network = PeerNetwork(self.blockchain)
         self.miner = Miner(
-            self.blockchain,
+            self.blockchain.storage,
             difficulty=self.mining_difficulty,
             reward=self.mining_reward
         )
