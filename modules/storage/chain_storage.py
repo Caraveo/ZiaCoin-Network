@@ -170,6 +170,20 @@ class ChainStorage:
         for block_file in block_files[:-keep_last_n]:
             block_file.unlink()
 
+    def load_chain(self) -> list:
+        """Load the entire blockchain from disk, sorted by block index."""
+        blocks = []
+        if not self.blocks_dir.exists():
+            return blocks
+        for block_file in self.blocks_dir.glob("*.json"):
+            with open(block_file, "r") as f:
+                data = json.load(f)
+                encrypted_data = data['encrypted_data']
+                decrypted_data = self.encryption.decrypt_symmetric(encrypted_data)
+                block = json.loads(decrypted_data)
+                blocks.append(block)
+        return sorted(blocks, key=lambda x: x['index'])
+
 def main():
     # Example usage
     storage = ChainStorage()
