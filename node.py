@@ -5,6 +5,7 @@ import json
 import logging
 import os
 from typing import List, Optional, Dict, Any
+from aiohttp import web
 
 from modules.network.peer import PeerNetwork
 from modules.blockchain.blockchain import Blockchain
@@ -37,6 +38,63 @@ class Node:
             reward=self.mining_reward
         )
         self.wallet_manager = WalletManager()
+        
+        # Initialize HTTP app
+        self.app = web.Application()
+        self.setup_routes()
+
+    def setup_routes(self):
+        """Setup HTTP API routes."""
+        self.app.router.add_get('/status', self.handle_status)
+        self.app.router.add_get('/balance/{address}', self.handle_balance)
+        self.app.router.add_post('/transaction', self.handle_transaction)
+        self.app.router.add_get('/chain', self.handle_chain)
+
+    async def handle_status(self, request):
+        """Handle status endpoint."""
+        return web.json_response({
+            'status': 'running',
+            'height': self.blockchain.get_latest_block().index,
+            'difficulty': self.mining_difficulty,
+            'reward': self.mining_reward,
+            'port': self.port
+        })
+
+    async def handle_balance(self, request):
+        """Handle balance endpoint."""
+        address = request.match_info['address']
+        balance = self.blockchain.get_balance(address)
+        return web.json_response({
+            'address': address,
+            'balance': balance
+        })
+
+    async def handle_transaction(self, request):
+        """Handle transaction endpoint."""
+        try:
+            data = await request.json()
+            transaction = {
+                'sender': data['sender'],
+                'recipient': data['recipient'],
+                'amount': float(data['amount'])
+            }
+            self.blockchain.add_transaction(transaction)
+            return web.json_response({
+                'status': 'success',
+                'message': 'Transaction added to pending transactions'
+            })
+        except Exception as e:
+            return web.json_response({
+                'status': 'error',
+                'message': str(e)
+            }, status=400)
+
+    async def handle_chain(self, request):
+        """Handle chain endpoint."""
+        return web.json_response({
+            'chain': [block.to_dict() for block in self.blockchain.chain],
+            'length': len(self.blockchain.chain)
+        })
 
     async def start(self):
         """Start the node and all its components."""
@@ -58,6 +116,13 @@ class Node:
             # Start mining
             self.miner.start_mining([])
             logger.info("Mining started")
+            
+            # Start HTTP server on the same port as the peer network
+            runner = web.AppRunner(self.app)
+            await runner.setup()
+            site = web.TCPSite(runner, 'localhost', self.port)
+            await site.start()
+            logger.info(f"HTTP API server started on port {self.port}")
             
             # Keep the node running
             while True:
@@ -81,7 +146,7 @@ def load_config() -> Dict[str, Any]:
     """Load and validate configuration from chain.config file."""
     default_config = {
         "network": {
-            "port": 8333,
+            "port": 9999,
             "bootstrap_nodes": []
         },
         "mining": {
