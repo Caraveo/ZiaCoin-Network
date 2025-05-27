@@ -36,4 +36,10 @@ chain.config
 kuber/
 wallets/
 *.log
-.DS_Store 
+.DS_Store
+
+# Ignore chain directory and its subdirectories
+chain/
+chain/blocks/
+chain/wallets/
+chain/keys/ 
