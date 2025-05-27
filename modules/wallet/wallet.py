@@ -82,25 +82,28 @@ class Wallet:
     @classmethod
     def create(cls, name: str, passphrase: str) -> 'Wallet':
         """Create a new wallet instance with generated keys and address."""
-        # Generate mnemonic
-        mnemonic = Mnemonic()
-        mnemonic_phrase = mnemonic.generate()
-        
-        # Use mnemonic and passphrase to generate seed
-        seed = mnemonic.to_seed(mnemonic_phrase, passphrase)
-        
-        # Use first 32 bytes of seed as private key
-        private_key = seed[:32].hex()
-        public_key = cls.generate_public_key(private_key)
-        address = cls.generate_address(public_key)
-        
-        return cls(
-            private_key=private_key,
-            public_key=public_key,
-            address=address,
-            mnemonic=mnemonic_phrase,
-            name=name
-        )
+        try:
+            # Generate mnemonic
+            mnemonic = Mnemonic()
+            mnemonic_phrase = mnemonic.generate()
+            
+            # Use mnemonic and passphrase to generate seed
+            seed = mnemonic.to_seed(mnemonic_phrase, passphrase)
+            
+            # Use first 32 bytes of seed as private key
+            private_key = seed[:32].hex()
+            public_key = cls.generate_public_key(private_key)
+            address = cls.generate_address(public_key)
+            
+            return cls(
+                private_key=private_key,
+                public_key=public_key,
+                address=address,
+                mnemonic=mnemonic_phrase,
+                name=name
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to create wallet: {str(e)}")
 
     @classmethod
     def from_mnemonic(cls, mnemonic_phrase: str, passphrase: str) -> 'Wallet':
