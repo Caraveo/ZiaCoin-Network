@@ -40,17 +40,12 @@ A modern, secure, and efficient blockchain implementation built with Python. Zia
 1. Clone the repository:
 ```bash
 git clone https://github.com/Caraveo/ZiaCoin-Network.git
-cd ZiaCoin-Network/chain
+cd ZiaCoin-Network
 ```
 
 2. Install dependencies:
 ```bash
 pip3 install -r requirements.txt
-```
-
-3. Create your first wallet:
-```bash
-python3 wallet.py createrecord "MyWallet" "your-secure-passphrase"
 ```
 
 ### Basic Usage
