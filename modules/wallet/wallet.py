@@ -24,7 +24,7 @@ import base58
 import argparse
 from typing import Tuple, Optional
 from dataclasses import dataclass
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
@@ -57,8 +57,8 @@ class Wallet:
             )
             public_key_obj = private_key_obj.public_key()
             public_key_bytes = public_key_obj.public_bytes(
-                encoding=ec.Encoding.X962,
-                format=ec.PublicFormat.CompressedPoint
+                encoding=serialization.Encoding.X962,
+                format=serialization.PublicFormat.CompressedPoint
             )
             return public_key_bytes.hex()
         except Exception as e:
