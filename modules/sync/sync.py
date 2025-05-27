@@ -13,10 +13,11 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 class CodeSync:
-    def __init__(self, repo_url: str = "https://github.com/caraveo/ZiaCoin-Network.git"):
-        self.repo_url = repo_url
-        self.repo_name = repo_url.split('/')[-1].replace('.git', '')
-        self.logger = logging.getLogger("CodeSync")
+    def __init__(self):
+        self.repo_url = "https://github.com/Caraveo/ZiaCoin-Network.git"
+        self.temp_dir = "temp_sync"
+        self.current_dir = os.getcwd()
+        self.repo_name = self.repo_url.split('/')[-1].replace('.git', '')
         
         # Initialize logging
         logging.basicConfig(
@@ -57,32 +58,34 @@ class CodeSync:
                     file_hash = hashlib.sha256(f.read()).hexdigest()
                     hashes[file_path] = file_hash
             except FileNotFoundError:
-                self.logger.warning(f"File not found: {file_path}")
+                logger.warning(f"File not found: {file_path}")
         return hashes
 
     def get_remote_hashes(self) -> Dict[str, str]:
         """Get SHA-256 hashes of remote files."""
         try:
             # Clone or update repository
-            if not os.path.exists(self.repo_name):
-                subprocess.run(['git', 'clone', self.repo_url], check=True)
+            if not os.path.exists(self.temp_dir):
+                logger.info("Cloning repository...")
+                subprocess.run(["git", "clone", self.repo_url, self.temp_dir], check=True)
             else:
-                subprocess.run(['git', '-C', self.repo_name, 'pull'], check=True)
+                logger.info("Updating repository...")
+                subprocess.run(["git", "-C", self.temp_dir, "pull"], check=True)
             
             # Get hashes from remote files
             hashes = {}
             for file_path in self.core_files:
-                remote_path = os.path.join(self.repo_name, file_path)
+                remote_path = os.path.join(self.temp_dir, file_path)
                 try:
                     with open(remote_path, 'rb') as f:
                         file_hash = hashlib.sha256(f.read()).hexdigest()
                         hashes[file_path] = file_hash
                 except FileNotFoundError:
-                    self.logger.warning(f"Remote file not found: {file_path}")
+                    logger.warning(f"Remote file not found: {file_path}")
             
             return hashes
         except subprocess.CalledProcessError as e:
-            self.logger.error(f"Error accessing remote repository: {str(e)}")
+            logger.error(f"Error accessing remote repository: {str(e)}")
             return {}
 
     def check_version(self) -> Tuple[bool, Optional[str]]:
@@ -96,7 +99,7 @@ class CodeSync:
             
             # Get remote version
             remote_version = None
-            remote_version_path = os.path.join(self.repo_name, self.version_file)
+            remote_version_path = os.path.join(self.temp_dir, self.version_file)
             if os.path.exists(remote_version_path):
                 with open(remote_version_path, 'r') as f:
                     remote_version = json.load(f).get('version')
@@ -106,39 +109,68 @@ class CodeSync:
             
             return local_version == remote_version, remote_version
         except Exception as e:
-            self.logger.error(f"Error checking version: {str(e)}")
+            logger.error(f"Error checking version: {str(e)}")
             return False, None
 
-    def update_code(self) -> bool:
-        """Update local code from remote repository."""
+    def check_for_updates(self) -> bool:
+        """Check if there are updates available."""
         try:
-            # Get remote hashes
-            remote_hashes = self.get_remote_hashes()
-            if not remote_hashes:
+            # Compare files
+            for root, _, files in os.walk(self.current_dir):
+                for file in files:
+                    if file.endswith('.py') or file.endswith('.conf'):
+                        current_file = os.path.join(root, file)
+                        temp_file = os.path.join(self.temp_dir, file)
+                        
+                        if os.path.exists(temp_file):
+                            with open(current_file, 'r') as f1, open(temp_file, 'r') as f2:
+                                if f1.read() != f2.read():
+                                    logger.warning(f"File mismatch: {file}")
+                                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Error checking for updates: {e}")
+            return False
+
+    def update(self) -> bool:
+        """Update the code to the latest version."""
+        try:
+            if not os.path.exists(self.temp_dir):
+                logger.error("Repository not cloned. Run check_for_updates first.")
                 return False
-            
-            # Update each file
-            for file_path, remote_hash in remote_hashes.items():
-                remote_file = os.path.join(self.repo_name, file_path)
-                if os.path.exists(remote_file):
-                    # Create directory if it doesn't exist
-                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                    
-                    # Copy file
-                    with open(remote_file, 'rb') as src, open(file_path, 'wb') as dst:
-                        dst.write(src.read())
-                    
-                    self.logger.info(f"Updated {file_path}")
-            
-            # Update version file
-            remote_version_path = os.path.join(self.repo_name, self.version_file)
-            if os.path.exists(remote_version_path):
-                with open(remote_version_path, 'rb') as src, open(self.version_file, 'wb') as dst:
-                    dst.write(src.read())
-            
+
+            # Copy updated files
+            for root, _, files in os.walk(self.temp_dir):
+                for file in files:
+                    if file.endswith('.py') or file.endswith('.conf'):
+                        temp_file = os.path.join(root, file)
+                        current_file = os.path.join(self.current_dir, file)
+                        
+                        # Create directory if it doesn't exist
+                        os.makedirs(os.path.dirname(current_file), exist_ok=True)
+                        
+                        # Copy file
+                        with open(temp_file, 'r') as src, open(current_file, 'w') as dst:
+                            dst.write(src.read())
+                            logger.info(f"Updated {file}")
+
+            # Clean up
+            subprocess.run(["rm", "-rf", self.temp_dir], check=True)
             return True
         except Exception as e:
-            self.logger.error(f"Error updating code: {str(e)}")
+            logger.error(f"Error updating code: {e}")
+            return False
+
+    def sync(self) -> bool:
+        """Check for updates and apply them if available."""
+        try:
+            if self.check_for_updates():
+                logger.info("Code is not up to date.")
+                return self.update()
+            logger.info("Code is up to date.")
+            return True
+        except Exception as e:
+            logger.error(f"Error during sync: {e}")
             return False
 
     def verify_code(self) -> bool:
@@ -155,52 +187,18 @@ class CodeSync:
             for file_path, remote_hash in remote_hashes.items():
                 local_hash = local_hashes.get(file_path)
                 if not local_hash or local_hash != remote_hash:
-                    self.logger.warning(f"File mismatch: {file_path}")
+                    logger.warning(f"File mismatch: {file_path}")
                     return False
             
             # Check version
             version_match, remote_version = self.check_version()
             if not version_match:
-                self.logger.warning(f"Version mismatch. Remote version: {remote_version}")
+                logger.warning(f"Version mismatch. Remote version: {remote_version}")
                 return False
             
             return True
         except Exception as e:
-            self.logger.error(f"Error verifying code: {str(e)}")
-            return False
-
-    def sync(self) -> bool:
-        """Synchronize code with remote repository."""
-        try:
-            # Always prompt before checking GitHub
-            print("\nWould you like to check for updates from GitHub? (y/n)")
-            response = input().lower()
-            
-            if response != 'y':
-                self.logger.info("Update check skipped by user")
-                return True
-            
-            # Check if code is up to date
-            if self.verify_code():
-                self.logger.info("Code is up to date")
-                return True
-            
-            # Ask user for update
-            print("\nCode is not up to date. Would you like to update? (y/n)")
-            response = input().lower()
-            
-            if response == 'y':
-                if self.update_code():
-                    self.logger.info("Code updated successfully")
-                    return True
-                else:
-                    self.logger.error("Failed to update code")
-                    return False
-            else:
-                self.logger.warning("Update declined by user")
-                return False
-        except Exception as e:
-            self.logger.error(f"Error during sync: {str(e)}")
+            logger.error(f"Error verifying code: {str(e)}")
             return False
 
     def check_sync(self) -> bool:

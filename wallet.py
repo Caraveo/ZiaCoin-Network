@@ -6,18 +6,55 @@ import os
 import sys
 from typing import Dict, Any
 import requests
+from colorama import init, Fore, Style
+
+# Initialize colorama for cross-platform colored output
+init()
 
 from modules.wallet.wallet import WalletManager
 from modules.blockchain.blockchain import Blockchain
 from modules.mnemonics.mnemonic import Mnemonic
 from modules.sync.sync import CodeSync
 
+# Configure logging with colors
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter with colors for different log levels."""
+    
+    COLORS = {
+        'DEBUG': Fore.BLUE,
+        'INFO': Fore.GREEN,
+        'WARNING': Fore.YELLOW,
+        'ERROR': Fore.RED,
+        'CRITICAL': Fore.RED + Style.BRIGHT
+    }
+
+    def format(self, record):
+        if record.levelname in self.COLORS:
+            record.msg = f"{self.COLORS[record.levelname]}{record.msg}{Style.RESET_ALL}"
+        return super().format(record)
+
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logger.addHandler(handler)
+
+def print_success(message: str):
+    """Print a success message in green."""
+    print(f"{Fore.GREEN}✓ {message}{Style.RESET_ALL}")
+
+def print_error(message: str):
+    """Print an error message in red."""
+    print(f"{Fore.RED}✗ {message}{Style.RESET_ALL}")
+
+def print_warning(message: str):
+    """Print a warning message in yellow."""
+    print(f"{Fore.YELLOW}⚠ {message}{Style.RESET_ALL}")
+
+def print_info(message: str):
+    """Print an info message in blue."""
+    print(f"{Fore.BLUE}ℹ {message}{Style.RESET_ALL}")
 
 def load_wallet_config() -> Dict[str, Any]:
     """Load configuration from wallet.conf file."""
@@ -69,15 +106,205 @@ def load_wallet_config() -> Dict[str, Any]:
                 for section in default_config:
                     if section in user_config:
                         default_config[section].update(user_config[section])
-                logger.info("Loaded configuration from wallet.conf")
+                print_success("Configuration loaded successfully")
         else:
-            logger.warning("No wallet.conf found, using default configuration")
+            print_warning("No wallet.conf found, using default configuration")
             
         return default_config
     except Exception as e:
-        logger.error(f"Error loading wallet config: {e}")
-        logger.warning("Using default configuration")
+        print_error(f"Error loading wallet config: {e}")
+        print_warning("Using default configuration")
         return default_config
+
+def check_node_connection(config: Dict[str, Any]) -> bool:
+    """Check if the node is running and accessible."""
+    try:
+        response = requests.get(
+            f"http://{config['node']['host']}:{config['node']['port']}/status",
+            timeout=5
+        )
+        if response.status_code == 200:
+            print_success("Node connection established")
+            return True
+        else:
+            print_error(f"Node returned status code: {response.status_code}")
+            return False
+    except requests.exceptions.ConnectionError:
+        print_error("Could not connect to node. Is it running?")
+        return False
+    except requests.exceptions.Timeout:
+        print_error("Node connection timed out")
+        return False
+    except Exception as e:
+        print_error(f"Error connecting to node: {e}")
+        return False
+
+def create_wallet_record(args, config: Dict[str, Any]):
+    """Create a new wallet with mnemonic and passphrase protection."""
+    if not check_node_connection(config):
+        print_error("Cannot create wallet without node connection")
+        sys.exit(1)
+        
+    try:
+        wallet_manager = WalletManager(
+            storage_path=config['wallet']['storage_path'],
+            encryption_config=config['wallet']['encryption'],
+            mnemonic_config=config['wallet']['mnemonic']
+        )
+        wallet = wallet_manager.create_wallet(args.name, args.passphrase)
+        
+        print_success("\nNew Wallet Created Successfully!")
+        print_info(f"Name: {wallet.name}")
+        print_info(f"Address: {wallet.address}")
+        print_info(f"Public Key: {wallet.public_key}")
+        print_warning("\nIMPORTANT: Save your mnemonic phrase securely!")
+        print_warning("You will need it to recover your wallet if you lose access.")
+        print_info(f"Mnemonic: {wallet.mnemonic}")
+        return wallet
+    except ValueError as e:
+        print_error(f"Invalid input: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print_error(f"Failed to create wallet: {e}")
+        sys.exit(1)
+
+def load_wallet(args, config: Dict[str, Any]):
+    """Load an existing wallet by address and passphrase."""
+    if not check_node_connection(config):
+        print_error("Cannot load wallet without node connection")
+        sys.exit(1)
+        
+    try:
+        wallet_manager = WalletManager(
+            storage_path=config['wallet']['storage_path'],
+            encryption_config=config['wallet']['encryption']
+        )
+        wallet = wallet_manager.load_wallet(args.address, args.passphrase)
+        
+        print_success("\nWallet Loaded Successfully!")
+        print_info(f"Name: {wallet.name}")
+        print_info(f"Address: {wallet.address}")
+        print_info(f"Public Key: {wallet.public_key}")
+        return wallet
+    except ValueError as e:
+        print_error(f"Invalid passphrase or wallet not found: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print_error(f"Failed to load wallet: {e}")
+        sys.exit(1)
+
+def get_balance(args, config: Dict[str, Any]):
+    """Get wallet balance."""
+    if not check_node_connection(config):
+        print_error("Cannot check balance without node connection")
+        sys.exit(1)
+        
+    try:
+        response = requests.get(
+            f"http://{config['node']['host']}:{config['node']['port']}/balance/{args.address}",
+            timeout=5
+        )
+        if response.status_code == 200:
+            balance = response.json()['balance']
+            print_success(f"\nBalance for {args.address}:")
+            print_info(f"{balance} ZIA")
+        else:
+            print_error(f"Failed to get balance: {response.text}")
+    except Exception as e:
+        print_error(f"Error checking balance: {e}")
+        sys.exit(1)
+
+def send_transaction(args, config: Dict[str, Any]):
+    """Send ZIA to another address."""
+    if not check_node_connection(config):
+        print_error("Cannot send transaction without node connection")
+        sys.exit(1)
+        
+    try:
+        # Load sender's wallet
+        wallet_manager = WalletManager(
+            storage_path=config['wallet']['storage_path'],
+            encryption_config=config['wallet']['encryption']
+        )
+        wallet = wallet_manager.load_wallet(args.from_address, args.passphrase)
+        
+        # Create transaction
+        transaction_data = {
+            'sender': args.from_address,
+            'recipient': args.to_address,
+            'amount': float(args.amount),
+            'private_key': wallet.private_key
+        }
+        
+        response = requests.post(
+            f"http://{config['node']['host']}:{config['node']['port']}/transaction",
+            json=transaction_data,
+            timeout=5
+        )
+        
+        if response.status_code == 201:
+            print_success("\nTransaction Sent Successfully!")
+            print_info(f"From: {args.from_address}")
+            print_info(f"To: {args.to_address}")
+            print_info(f"Amount: {args.amount} ZIA")
+        else:
+            print_error(f"Failed to send transaction: {response.text}")
+    except ValueError as e:
+        print_error(f"Invalid input: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print_error(f"Failed to send transaction: {e}")
+        sys.exit(1)
+
+def list_wallets(args, config: Dict[str, Any]):
+    """List all wallets."""
+    if not check_node_connection(config):
+        print_error("Cannot list wallets without node connection")
+        sys.exit(1)
+        
+    try:
+        wallet_manager = WalletManager(
+            storage_path=config['wallet']['storage_path'],
+            encryption_config=config['wallet']['encryption']
+        )
+        wallets = wallet_manager.list_wallets()
+        
+        if wallets:
+            print_success("\nAvailable Wallets:")
+            for wallet in wallets:
+                print_info(f"Address: {wallet['address']}")
+        else:
+            print_warning("\nNo wallets found")
+        return wallets
+    except Exception as e:
+        print_error(f"Failed to list wallets: {e}")
+        sys.exit(1)
+
+def recover_wallet(args, config: Dict[str, Any]):
+    """Recover wallet from mnemonic phrase."""
+    if not check_node_connection(config):
+        print_error("Cannot recover wallet without node connection")
+        sys.exit(1)
+        
+    try:
+        wallet_manager = WalletManager(
+            storage_path=config['wallet']['storage_path'],
+            encryption_config=config['wallet']['encryption'],
+            mnemonic_config=config['wallet']['mnemonic']
+        )
+        wallet = wallet_manager.recover_wallet(args.mnemonic, args.passphrase)
+        
+        print_success("\nWallet Recovered Successfully!")
+        print_info(f"Name: {wallet.name}")
+        print_info(f"Address: {wallet.address}")
+        print_info(f"Public Key: {wallet.public_key}")
+        return wallet
+    except ValueError as e:
+        print_error(f"Invalid mnemonic or passphrase: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print_error(f"Failed to recover wallet: {e}")
+        sys.exit(1)
 
 def check_updates(config: Dict[str, Any]) -> None:
     """Check for updates based on configuration settings."""
@@ -89,145 +316,11 @@ def check_updates(config: Dict[str, Any]) -> None:
         if sync.check_for_updates():
             if config['updates']['auto_update']:
                 sync.update()
-                logger.info("Code updated successfully")
+                print_success("Code updated successfully")
             else:
-                logger.info("Updates available. Run with --update to apply them.")
+                print_warning("Updates available. Run with --update to apply them.")
     except Exception as e:
-        logger.error(f"Error checking for updates: {e}")
-
-def check_node_connection(config: Dict[str, Any]) -> bool:
-    """Check if the node is running and accessible."""
-    try:
-        node_host = config['node']['host']
-        node_port = config['node']['port']
-        status_endpoint = config['node']['api_endpoints']['status']
-        response = requests.get(f'http://{node_host}:{node_port}{status_endpoint}')
-        return response.status_code == 200
-    except requests.exceptions.ConnectionError:
-        logger.error("Cannot connect to node. Please ensure the node is running.")
-        return False
-
-def create_wallet_record(args, config: Dict[str, Any]):
-    """Create a new wallet with mnemonic and passphrase protection."""
-    if not check_node_connection(config):
-        sys.exit(1)
-        
-    wallet_manager = WalletManager(
-        storage_path=config['wallet']['storage_path'],
-        encryption_config=config['wallet']['encryption'],
-        mnemonic_config=config['wallet']['mnemonic']
-    )
-    wallet = wallet_manager.create_wallet(args.name, args.passphrase)
-    logger.info("\nNew Wallet Created:")
-    logger.info(f"Name: {wallet.name}")
-    logger.info(f"Address: {wallet.address}")
-    logger.info(f"Public Key: {wallet.public_key}")
-    logger.info(f"Mnemonic: {wallet.mnemonic}")
-    logger.info("\nIMPORTANT: Save your mnemonic phrase securely!")
-    logger.info("You will need it to recover your wallet if you lose access.")
-    return wallet
-
-def get_balance(args, config: Dict[str, Any]):
-    """Get wallet balance."""
-    if not check_node_connection(config):
-        sys.exit(1)
-        
-    node_host = config['node']['host']
-    node_port = config['node']['port']
-    balance_endpoint = config['node']['api_endpoints']['balance'].format(address=args.address)
-    
-    try:
-        response = requests.get(f'http://{node_host}:{node_port}{balance_endpoint}')
-        if response.status_code == 200:
-            data = response.json()
-            logger.info(f"Balance for {args.address}: {data['balance']} ZIA")
-            return data['balance']
-        else:
-            logger.error(f"Failed to get balance: {response.text}")
-            return None
-    except Exception as e:
-        logger.error(f"Error getting balance: {e}")
-        return None
-
-def send_transaction(args, config: Dict[str, Any]):
-    """Send ZIA to another address."""
-    if not check_node_connection(config):
-        sys.exit(1)
-        
-    node_host = config['node']['host']
-    node_port = config['node']['port']
-    transaction_endpoint = config['node']['api_endpoints']['transaction']
-    
-    try:
-        # Create transaction
-        transaction = {
-            'sender': args.from_address,
-            'recipient': args.to_address,
-            'amount': float(args.amount)
-        }
-        
-        # Send transaction to node
-        response = requests.post(
-            f'http://{node_host}:{node_port}{transaction_endpoint}',
-            json=transaction
-        )
-        
-        if response.status_code == 200:
-            logger.info(f"Sent {args.amount} ZIA from {args.from_address} to {args.to_address}")
-            return transaction
-        else:
-            logger.error(f"Failed to send transaction: {response.text}")
-            return None
-    except Exception as e:
-        logger.error(f"Error sending transaction: {e}")
-        return None
-
-def list_wallets(args, config: Dict[str, Any]):
-    """List all wallets."""
-    if not check_node_connection(config):
-        sys.exit(1)
-        
-    wallet_manager = WalletManager(
-        storage_path=config['wallet']['storage_path'],
-        encryption_config=config['wallet']['encryption']
-    )
-    wallets = wallet_manager.list_wallets()
-    for wallet in wallets:
-        logger.info(f"Address: {wallet['address']}")
-    return wallets
-
-def recover_wallet(args, config: Dict[str, Any]):
-    """Recover wallet from mnemonic phrase."""
-    if not check_node_connection(config):
-        sys.exit(1)
-        
-    wallet_manager = WalletManager(
-        storage_path=config['wallet']['storage_path'],
-        encryption_config=config['wallet']['encryption'],
-        mnemonic_config=config['wallet']['mnemonic']
-    )
-    wallet = wallet_manager.recover_wallet(args.mnemonic, args.passphrase)
-    logger.info("\nWallet Recovered:")
-    logger.info(f"Name: {wallet.name}")
-    logger.info(f"Address: {wallet.address}")
-    logger.info(f"Public Key: {wallet.public_key}")
-    return wallet
-
-def load_wallet(args, config: Dict[str, Any]):
-    """Load an existing wallet by address and passphrase."""
-    if not check_node_connection(config):
-        sys.exit(1)
-        
-    wallet_manager = WalletManager(
-        storage_path=config['wallet']['storage_path'],
-        encryption_config=config['wallet']['encryption']
-    )
-    wallet = wallet_manager.load_wallet(args.address, args.passphrase)
-    logger.info("\nWallet Loaded:")
-    logger.info(f"Name: {wallet.name}")
-    logger.info(f"Address: {wallet.address}")
-    logger.info(f"Public Key: {wallet.public_key}")
-    return wallet
+        print_error(f"Error checking for updates: {e}")
 
 def main():
     # Load wallet configuration
@@ -266,6 +359,7 @@ def main():
     send_parser.add_argument('from_address', help='Sender wallet address')
     send_parser.add_argument('to_address', help='Recipient wallet address')
     send_parser.add_argument('amount', help='Amount to send')
+    send_parser.add_argument('passphrase', help='Sender wallet passphrase')
     
     # List wallets command
     list_parser = subparsers.add_parser('list', help='List all wallets')
@@ -281,7 +375,7 @@ def main():
         if args.update:
             sync = CodeSync()
             sync.update()
-            logger.info("Code updated successfully")
+            print_success("Code updated successfully")
             return
             
         if args.command == 'createrecord':
@@ -298,9 +392,12 @@ def main():
             recover_wallet(args, config)
         else:
             parser.print_help()
+    except KeyboardInterrupt:
+        print_warning("\nOperation cancelled by user")
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
+        print_error(f"Error: {str(e)}")
         sys.exit(1)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main() 

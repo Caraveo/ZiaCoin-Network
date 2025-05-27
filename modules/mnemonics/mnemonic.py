@@ -18,7 +18,10 @@ class Mnemonic:
         wordlist_path = Path(__file__).parent / 'word.csv'
         with open(wordlist_path, 'r') as f:
             reader = csv.reader(f)
-            return [word.strip('"') for row in reader for word in row]
+            # The CSV has a single row with all words
+            words = next(reader)
+            # Clean up the words (remove quotes and whitespace)
+            return [word.strip().strip('"') for word in words]
 
     def _generate_entropy(self) -> bytes:
         """Generate cryptographically secure random entropy."""
