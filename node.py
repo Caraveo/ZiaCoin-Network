@@ -115,6 +115,7 @@ async def main():
     parser = argparse.ArgumentParser(description='ZiaCoin Node')
     parser.add_argument('--port', type=int, help='Override port from config')
     parser.add_argument('--bootstrap-nodes', type=str, help='Override bootstrap nodes from config (comma-separated host:port)')
+    parser.add_argument('--genesis', action='store_true', help='Mine the first genesis block')
     args = parser.parse_args()
 
     # Load configuration
@@ -129,6 +130,11 @@ async def main():
     # Create and start node
     node = Node(config=config)
     
+    if args.genesis:
+        node.blockchain._create_genesis_block()
+        logger.info("Genesis block mined successfully.")
+        return
+
     try:
         await node.start()
     except KeyboardInterrupt:
