@@ -36,7 +36,7 @@ class Node:
             difficulty=self.mining_difficulty,
             reward=self.mining_reward
         )
-        self.wallet_manager = WalletManager(storage_path=self.wallet_path)
+        self.wallet_manager = WalletManager()
 
     async def start(self):
         """Start the node and all its components."""
