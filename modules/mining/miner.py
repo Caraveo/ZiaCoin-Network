@@ -20,9 +20,11 @@ class Block:
     merkle_root: str
 
 class Miner:
-    def __init__(self, storage: ChainStorage, target_block_time: int = 60):
+    def __init__(self, storage: ChainStorage, target_block_time: int = 60, difficulty: int = 4, reward: int = 50):
         self.storage = storage
         self.target_block_time = target_block_time  # Target time between blocks in seconds
+        self.current_difficulty = difficulty
+        self.reward = reward
         self.mining = False
         self.current_block = None
         self.lock = threading.Lock()
