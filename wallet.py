@@ -15,6 +15,7 @@ from modules.wallet.wallet import WalletManager
 from modules.blockchain.blockchain import Blockchain
 from modules.mnemonics.mnemonic import Mnemonic
 from modules.sync.sync import CodeSync
+from modules.utils.print_utils import print_success, print_error, print_warning, print_info
 
 # Configure logging with colors
 class ColoredFormatter(logging.Formatter):
@@ -39,22 +40,6 @@ logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 logger.addHandler(handler)
-
-def print_success(message: str):
-    """Print a success message in green."""
-    print(f"{Fore.GREEN}✓ {message}{Style.RESET_ALL}")
-
-def print_error(message: str):
-    """Print an error message in red."""
-    print(f"{Fore.RED}✗ {message}{Style.RESET_ALL}")
-
-def print_warning(message: str):
-    """Print a warning message in yellow."""
-    print(f"{Fore.YELLOW}⚠ {message}{Style.RESET_ALL}")
-
-def print_info(message: str):
-    """Print an info message in blue."""
-    print(f"{Fore.BLUE}ℹ {message}{Style.RESET_ALL}")
 
 def load_wallet_config() -> Dict[str, Any]:
     """Load configuration from wallet.conf file."""

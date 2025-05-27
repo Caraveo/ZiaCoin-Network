@@ -11,6 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
 
 # Import the sync module
 from modules.sync.sync import CodeSync
+from modules.utils.print_utils import print_success, print_error, print_warning, print_info
 
 def check_sync():
     """Check if code is synchronized with remote repository."""

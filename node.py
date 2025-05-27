@@ -13,25 +13,10 @@ from aiohttp import web
 from flask import Flask, request, jsonify
 from werkzeug.exceptions import HTTPException
 from colorama import init, Fore, Style
+from modules.utils.print_utils import print_success, print_error, print_warning, print_info
 
 # Initialize colorama
 init()
-
-def print_success(message: str) -> None:
-    """Print a success message in green."""
-    print(f"{Fore.GREEN}✓ {message}{Style.RESET_ALL}")
-
-def print_error(message: str) -> None:
-    """Print an error message in red."""
-    print(f"{Fore.RED}✗ {message}{Style.RESET_ALL}")
-
-def print_warning(message: str) -> None:
-    """Print a warning message in yellow."""
-    print(f"{Fore.YELLOW}⚠ {message}{Style.RESET_ALL}")
-
-def print_info(message: str) -> None:
-    """Print an info message in blue."""
-    print(f"{Fore.BLUE}ℹ {message}{Style.RESET_ALL}")
 
 # Add the modules directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
