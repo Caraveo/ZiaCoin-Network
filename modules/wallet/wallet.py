@@ -149,6 +149,7 @@ class WalletManager:
             "language": "english"
         }
         self.wallets = {}
+        self.storage = ChainStorage()  # Initialize storage
         self.initialize()
 
     def initialize(self) -> bool:
@@ -279,21 +280,33 @@ class WalletManager:
 
     def create_wallet(self, name: str, passphrase: str) -> Wallet:
         """Create a new wallet and save it securely."""
-        wallet = Wallet.create(name, passphrase)
-        
-        # Save wallet data
-        wallet_data = {
-            'name': wallet.name,
-            'address': wallet.address,
-            'public_key': wallet.public_key,
-            'private_key': wallet.private_key,
-            'mnemonic': wallet.mnemonic
-        }
-        
-        # Save with passphrase protection
-        self.storage.save_wallet(wallet.address, wallet_data, password=passphrase)
-        
-        return wallet
+        try:
+            wallet = Wallet.create(name, passphrase)
+            
+            # Save wallet data
+            wallet_data = {
+                'name': wallet.name,
+                'address': wallet.address,
+                'public_key': wallet.public_key,
+                'private_key': wallet.private_key,
+                'mnemonic': wallet.mnemonic
+            }
+            
+            # Save to file
+            wallet_path = os.path.join(self.storage_path, f"{wallet.address}.json")
+            os.makedirs(os.path.dirname(wallet_path), exist_ok=True)
+            
+            with open(wallet_path, 'w') as f:
+                json.dump(wallet_data, f, indent=4)
+            
+            # Update wallet index
+            self.wallets[wallet.address] = wallet
+            self.save_state()
+            
+            return wallet
+        except Exception as e:
+            print_error(f"Failed to create wallet: {e}")
+            raise
 
     def load_wallet(self, address: str, passphrase: str) -> Wallet:
         """Load a wallet using its address and passphrase."""
