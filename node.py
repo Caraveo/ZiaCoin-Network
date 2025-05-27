@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from modules.network.peer import PeerNetwork
 from modules.blockchain.blockchain import Blockchain
@@ -19,13 +19,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class Node:
-    def __init__(self, port: int = 8333, bootstrap_nodes: Optional[List[str]] = None):
-        self.port = port
-        self.bootstrap_nodes = bootstrap_nodes or []
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.port = config['network']['port']
+        self.bootstrap_nodes = config['network']['bootstrap_nodes']
+        self.mining_difficulty = config['mining']['difficulty']
+        self.mining_reward = config['mining']['reward']
+        self.wallet_path = config['wallet']['storage_path']
+        
+        # Initialize components with config
         self.blockchain = Blockchain()
         self.peer_network = PeerNetwork(self.blockchain)
-        self.miner = Miner(self.blockchain)
-        self.wallet_manager = WalletManager()
+        self.miner = Miner(
+            self.blockchain,
+            difficulty=self.mining_difficulty,
+            reward=self.mining_reward
+        )
+        self.wallet_manager = WalletManager(storage_path=self.wallet_path)
 
     async def start(self):
         """Start the node and all its components."""
@@ -33,9 +43,13 @@ class Node:
             # Start peer network
             await self.peer_network.start(self.port, self.bootstrap_nodes)
             logger.info(f"Node started on port {self.port}")
+            logger.info(f"Mining difficulty: {self.mining_difficulty}")
+            logger.info(f"Mining reward: {self.mining_reward}")
+            logger.info(f"Wallet storage: {self.wallet_path}")
             
             # Connect to bootstrap nodes
             if self.bootstrap_nodes:
+                logger.info(f"Connecting to bootstrap nodes: {self.bootstrap_nodes}")
                 for node in self.bootstrap_nodes:
                     host, port = node.split(':')
                     await self.peer_network.connect_to_peer(host, int(port))
@@ -62,32 +76,57 @@ class Node:
             logger.error(f"Error stopping node: {e}")
             raise
 
-def load_config() -> dict:
-    """Load configuration from chain.config file."""
+def load_config() -> Dict[str, Any]:
+    """Load and validate configuration from chain.config file."""
+    default_config = {
+        "network": {
+            "port": 8333,
+            "bootstrap_nodes": []
+        },
+        "mining": {
+            "difficulty": 4,
+            "reward": 50
+        },
+        "wallet": {
+            "storage_path": "wallets/"
+        }
+    }
+    
     try:
         if os.path.exists('chain.config'):
             with open('chain.config', 'r') as f:
-                return json.load(f)
-        return {}
+                user_config = json.load(f)
+                # Merge with defaults, keeping user values where provided
+                for section in default_config:
+                    if section in user_config:
+                        default_config[section].update(user_config[section])
+                logger.info("Loaded configuration from chain.config")
+        else:
+            logger.warning("No chain.config found, using default configuration")
+            
+        return default_config
     except Exception as e:
         logger.error(f"Error loading config: {e}")
-        return {}
+        logger.warning("Using default configuration")
+        return default_config
 
 async def main():
     parser = argparse.ArgumentParser(description='ZiaCoin Node')
-    parser.add_argument('--port', type=int, help='Port to run the node on')
-    parser.add_argument('--bootstrap-nodes', type=str, help='Comma-separated list of bootstrap nodes (host:port)')
+    parser.add_argument('--port', type=int, help='Override port from config')
+    parser.add_argument('--bootstrap-nodes', type=str, help='Override bootstrap nodes from config (comma-separated host:port)')
     args = parser.parse_args()
 
     # Load configuration
     config = load_config()
     
-    # Use command line args or config values
-    port = args.port or config.get('network', {}).get('port', 8333)
-    bootstrap_nodes = args.bootstrap_nodes.split(',') if args.bootstrap_nodes else config.get('network', {}).get('bootstrap_nodes', [])
+    # Override config with command line args if provided
+    if args.port:
+        config['network']['port'] = args.port
+    if args.bootstrap_nodes:
+        config['network']['bootstrap_nodes'] = args.bootstrap_nodes.split(',')
 
     # Create and start node
-    node = Node(port=port, bootstrap_nodes=bootstrap_nodes)
+    node = Node(config=config)
     
     try:
         await node.start()
