@@ -172,6 +172,14 @@ class CodeSync:
     def sync(self) -> bool:
         """Synchronize code with remote repository."""
         try:
+            # Always prompt before checking GitHub
+            print("\nWould you like to check for updates from GitHub? (y/n)")
+            response = input().lower()
+            
+            if response != 'y':
+                self.logger.info("Update check skipped by user")
+                return True
+            
             # Check if code is up to date
             if self.verify_code():
                 self.logger.info("Code is up to date")
