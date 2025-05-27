@@ -55,27 +55,39 @@ python3 wallet.py createrecord "MyWallet" "your-secure-passphrase"
 
 ### Basic Usage
 
-1. **Create a Wallet**
+1. **Start a Node**
+```bash
+# Start a node with default configuration
+python3 node.py
+
+# Start a node with custom port
+python3 node.py --port 8334
+
+# Start a node with specific bootstrap nodes
+python3 node.py --bootstrap-nodes "127.0.0.1:8333,127.0.0.1:8334"
+```
+
+2. **Create a Wallet**
 ```bash
 python3 wallet.py createrecord "WalletName" "passphrase"
 ```
 
-2. **Load an Existing Wallet**
+3. **Load an Existing Wallet**
 ```bash
 python3 wallet.py load "wallet-address" "passphrase"
 ```
 
-3. **Recover Wallet from Mnemonic**
+4. **Recover Wallet from Mnemonic**
 ```bash
 python3 wallet.py recover "your-mnemonic-phrase" "passphrase"
 ```
 
-4. **Start Mining**
+5. **Start Mining**
 ```bash
 python3 miner.py
 ```
 
-5. **Run the API Server**
+6. **Run the API Server**
 ```bash
 python3 app.py
 ```
@@ -135,4 +147,4 @@ This project is licensed under the Zia Open License v1.0.1 - see the [LICENSE](L
 
 ## 📞 Support
 
-For support, email support@zia.com or join our Discord community. 
+For support, email hello@ziawe.com or join our Discord community. 
