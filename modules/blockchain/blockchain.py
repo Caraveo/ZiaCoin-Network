@@ -131,6 +131,7 @@ class Blockchain:
             'merkle_root': hashlib.sha256(b'').hexdigest()
         }
         genesis_block['hash'] = self._calculate_block_hash(genesis_block)
+        genesis_block.pop('hash', None)
         self.chain.append(Block(**genesis_block))
         self.storage.save_block(genesis_block)
 
