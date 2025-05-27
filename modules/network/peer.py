@@ -13,6 +13,8 @@ import logging
 from ..storage import ChainStorage
 from ..mining.miner import Miner
 from .dht import KademliaDHT, DHTNode
+import os
+import requests
 
 @dataclass
 class Peer:
@@ -24,12 +26,15 @@ class Peer:
     is_active: bool = True
 
 class PeerNetwork:
-    def __init__(self, host: str = "0.0.0.0", port: int = 8333, bootstrap_nodes: List[Dict[str, Any]] = None):
-        self.host = host
-        self.port = port
-        self.node_id = hashlib.sha256(f"{host}:{port}".encode()).hexdigest()
-        self.peers: Set[Peer] = set()
-        self.bootstrap_nodes = bootstrap_nodes or [
+    def __init__(self, blockchain):
+        self.blockchain = blockchain
+        self.peers = set()
+        self.is_running = False
+        self.sync_thread = None
+        self.host = "0.0.0.0"
+        self.port = 8333
+        self.node_id = hashlib.sha256(f"{self.host}:{self.port}".encode()).hexdigest()
+        self.bootstrap_nodes = [
             {"host": "seed1.ziacoin.net", "port": 8333},
             {"host": "seed2.ziacoin.net", "port": 8333}
         ]
@@ -40,7 +45,7 @@ class PeerNetwork:
         self.logger = logging.getLogger("PeerNetwork")
         
         # Initialize DHT
-        self.dht = KademliaDHT(self.node_id, host, port)
+        self.dht = KademliaDHT(self.node_id, self.host, self.port)
         
         # Initialize logging
         logging.basicConfig(
@@ -48,10 +53,148 @@ class PeerNetwork:
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
 
-    async def start(self, port, bootstrap_nodes):
-        """Start the peer network on the specified port and connect to bootstrap nodes."""
-        # Implementation details here
-        pass
+    def initialize(self) -> bool:
+        """Initialize the peer network."""
+        try:
+            # Clear existing peers
+            self.peers.clear()
+            self.is_running = False
+            
+            # Load known peers from storage if available
+            if os.path.exists('peers.json'):
+                with open('peers.json', 'r') as f:
+                    self.peers = set(json.load(f))
+                print_success(f"Loaded {len(self.peers)} known peers")
+            
+            print_success("Peer network initialized")
+            return True
+        except Exception as e:
+            print_error(f"Failed to initialize peer network: {e}")
+            return False
+
+    def start(self, port: int, bootstrap_nodes: List[str] = None) -> None:
+        """Start the peer network."""
+        if self.is_running:
+            print_warning("Peer network already running")
+            return
+
+        self.is_running = True
+        self.sync_thread = threading.Thread(
+            target=self._sync_loop,
+            args=(port, bootstrap_nodes)
+        )
+        self.sync_thread.daemon = True
+        self.sync_thread.start()
+        print_success(f"Peer network started on port {port}")
+
+    def stop(self) -> None:
+        """Stop the peer network."""
+        try:
+            if self.is_running:
+                self.is_running = False
+                if self.sync_thread:
+                    self.sync_thread.join(timeout=5)
+                
+                # Save current peers
+                with open('peers.json', 'w') as f:
+                    json.dump(list(self.peers), f)
+                
+                print_success("Peer network stopped")
+        except Exception as e:
+            print_error(f"Error stopping peer network: {e}")
+
+    def _sync_loop(self, port: int, bootstrap_nodes: List[str] = None) -> None:
+        """Main synchronization loop."""
+        try:
+            # Connect to bootstrap nodes
+            if bootstrap_nodes:
+                for node in bootstrap_nodes:
+                    try:
+                        host, node_port = node.split(':')
+                        self._connect_to_peer(host, int(node_port))
+                    except Exception as e:
+                        print_warning(f"Failed to connect to bootstrap node {node}: {e}")
+
+            # Start periodic sync
+            while self.is_running:
+                self._sync_with_peers()
+                time.sleep(30)  # Sync every 30 seconds
+        except Exception as e:
+            print_error(f"Sync loop error: {e}")
+            self.is_running = False
+
+    def _connect_to_peer(self, host: str, port: int) -> bool:
+        """Connect to a peer node."""
+        try:
+            peer = f"{host}:{port}"
+            if peer not in self.peers:
+                # Verify peer is reachable
+                response = requests.get(
+                    f"http://{peer}/status",
+                    timeout=5
+                )
+                if response.status_code == 200:
+                    self.peers.add(peer)
+                    print_success(f"Connected to peer: {peer}")
+                    return True
+            return False
+        except Exception as e:
+            print_warning(f"Failed to connect to peer {host}:{port}: {e}")
+            return False
+
+    def _sync_with_peers(self) -> None:
+        """Synchronize blockchain with peers."""
+        try:
+            for peer in list(self.peers):
+                try:
+                    # Get peer's chain
+                    response = requests.get(
+                        f"http://{peer}/chain",
+                        timeout=5
+                    )
+                    if response.status_code == 200:
+                        peer_chain = response.json()['chain']
+                        if len(peer_chain) > len(self.blockchain.chain):
+                            # Verify and update chain
+                            if self._verify_chain(peer_chain):
+                                self.blockchain.chain = peer_chain
+                                print_success(f"Chain synchronized with peer {peer}")
+                except Exception as e:
+                    print_warning(f"Failed to sync with peer {peer}: {e}")
+                    self.peers.remove(peer)
+        except Exception as e:
+            print_error(f"Sync error: {e}")
+
+    def _verify_chain(self, chain: List[Dict]) -> bool:
+        """Verify the integrity of a peer's chain."""
+        try:
+            for i in range(1, len(chain)):
+                current_block = chain[i]
+                previous_block = chain[i-1]
+
+                # Verify block hash
+                if current_block['hash'] != self._calculate_block_hash(current_block):
+                    return False
+
+                # Verify previous hash
+                if current_block['previous_hash'] != previous_block['hash']:
+                    return False
+
+            return True
+        except Exception as e:
+            print_error(f"Chain verification failed: {e}")
+            return False
+
+    def _calculate_block_hash(self, block: Dict) -> str:
+        """Calculate the hash of a block."""
+        block_string = json.dumps({
+            'index': block['index'],
+            'timestamp': block['timestamp'],
+            'transactions': block['transactions'],
+            'previous_hash': block['previous_hash'],
+            'nonce': block['nonce']
+        }, sort_keys=True).encode()
+        return hashlib.sha256(block_string).hexdigest()
 
     async def _handle_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Handle incoming peer connections."""

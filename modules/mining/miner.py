@@ -164,6 +164,64 @@ class Miner:
             'latest_block': self.current_block.__dict__ if self.current_block else None
         }
 
+    def initialize(self) -> bool:
+        """Initialize the miner."""
+        try:
+            # Verify storage connection
+            if not self.storage:
+                print_error("No storage connection available")
+                return False
+            
+            # Set up mining parameters
+            self.mining = False
+            print_success("Miner initialized successfully")
+            return True
+        except Exception as e:
+            print_error(f"Failed to initialize miner: {e}")
+            return False
+
+    def _mine_block(self, transactions: List[Dict[str, Any]]) -> None:
+        """Mine a new block with the given transactions."""
+        try:
+            while self.mining:
+                # Create new block
+                new_block = self._create_block(transactions)
+
+                # Mine the block
+                while self.mining:
+                    new_block.nonce += 1
+                    new_block.hash = self._calculate_block_hash(new_block)
+                    
+                    if self._is_valid_hash(new_block.hash, new_block.difficulty):
+                        # Block mined successfully
+                        self.height = new_block.index
+                        self.last_block_hash = new_block.hash
+                        
+                        # Save block and update state
+                        self.storage.save_block(new_block.__dict__)
+                        self.storage.save_chain_state({
+                            'height': self.height,
+                            'latest_block_hash': self.last_block_hash,
+                            'difficulty': self.current_difficulty
+                        })
+                        
+                        # Add mining reward transaction
+                        reward_tx = {
+                            'sender': 'network',
+                            'recipient': self.storage.miner_address,
+                            'amount': self.reward,
+                            'timestamp': datetime.utcnow().isoformat()
+                        }
+                        self.storage.add_transaction(reward_tx)
+                        
+                        break
+
+                # Wait before mining next block
+                time.sleep(1)
+        except Exception as e:
+            print_error(f"Mining error: {e}")
+            self.mining = False
+
 def main():
     # Example usage
     storage = ChainStorage()

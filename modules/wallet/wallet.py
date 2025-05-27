@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 import sys
 import os
+import json
+import time
+import shutil
+from typing import Dict
 
 # Add the modules directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
@@ -132,9 +136,145 @@ class Wallet:
         return f"Wallet Name: {self.name}\nAddress: {self.address}\nPublic Key: {self.public_key}\nMnemonic: {self.mnemonic}"
 
 class WalletManager:
-    def __init__(self):
-        self.storage = ChainStorage()
-        self.encryption = Encryption()
+    def __init__(self, storage_path: str = "wallets/", encryption_config: Dict = None, mnemonic_config: Dict = None):
+        self.storage_path = storage_path
+        self.encryption_config = encryption_config or {
+            "algorithm": "AES-GCM",
+            "key_derivation": "PBKDF2",
+            "iterations": 100000
+        }
+        self.mnemonic_config = mnemonic_config or {
+            "word_count": 12,
+            "language": "english"
+        }
+        self.wallets = {}
+        self.initialize()
+
+    def initialize(self) -> bool:
+        """Initialize the wallet manager."""
+        try:
+            # Create storage directory if it doesn't exist
+            os.makedirs(self.storage_path, exist_ok=True)
+            
+            # Load existing wallets
+            self._load_wallets()
+            
+            print_success("Wallet manager initialized")
+            return True
+        except Exception as e:
+            print_error(f"Failed to initialize wallet manager: {e}")
+            return False
+
+    def save_state(self) -> bool:
+        """Save the current state of all wallets."""
+        try:
+            # Save each wallet
+            for address, wallet in self.wallets.items():
+                wallet_path = os.path.join(self.storage_path, f"{address}.json")
+                with open(wallet_path, 'w') as f:
+                    json.dump(wallet.to_dict(), f, indent=4)
+            
+            # Save wallet index
+            index_path = os.path.join(self.storage_path, "index.json")
+            with open(index_path, 'w') as f:
+                json.dump({
+                    "wallets": list(self.wallets.keys()),
+                    "timestamp": time.time()
+                }, f, indent=4)
+            
+            print_success("Wallet state saved")
+            return True
+        except Exception as e:
+            print_error(f"Failed to save wallet state: {e}")
+            return False
+
+    def _load_wallets(self) -> None:
+        """Load all wallets from storage."""
+        try:
+            index_path = os.path.join(self.storage_path, "index.json")
+            if os.path.exists(index_path):
+                with open(index_path, 'r') as f:
+                    index = json.load(f)
+                    for address in index.get("wallets", []):
+                        wallet_path = os.path.join(self.storage_path, f"{address}.json")
+                        if os.path.exists(wallet_path):
+                            with open(wallet_path, 'r') as wf:
+                                wallet_data = json.load(wf)
+                                self.wallets[address] = Wallet.from_dict(wallet_data)
+                print_success(f"Loaded {len(self.wallets)} wallets")
+        except Exception as e:
+            print_error(f"Failed to load wallets: {e}")
+
+    def verify_storage(self) -> bool:
+        """Verify the integrity of wallet storage."""
+        try:
+            # Check storage directory
+            if not os.path.exists(self.storage_path):
+                print_warning("Wallet storage directory not found")
+                return False
+            
+            # Check index file
+            index_path = os.path.join(self.storage_path, "index.json")
+            if not os.path.exists(index_path):
+                print_warning("Wallet index not found")
+                return False
+            
+            # Verify each wallet file
+            with open(index_path, 'r') as f:
+                index = json.load(f)
+                for address in index.get("wallets", []):
+                    wallet_path = os.path.join(self.storage_path, f"{address}.json")
+                    if not os.path.exists(wallet_path):
+                        print_warning(f"Wallet file not found: {address}")
+                        return False
+                    
+                    # Verify wallet data
+                    with open(wallet_path, 'r') as wf:
+                        wallet_data = json.load(wf)
+                        if not self._verify_wallet_data(wallet_data):
+                            print_warning(f"Invalid wallet data: {address}")
+                            return False
+            
+            return True
+        except Exception as e:
+            print_error(f"Storage verification failed: {e}")
+            return False
+
+    def _verify_wallet_data(self, wallet_data: Dict) -> bool:
+        """Verify the integrity of wallet data."""
+        required_fields = ['address', 'public_key', 'encrypted_private_key']
+        return all(field in wallet_data for field in required_fields)
+
+    def recover_storage(self) -> bool:
+        """Attempt to recover wallet storage from corruption."""
+        try:
+            # Create backup of current storage
+            backup_path = f"{self.storage_path}.backup"
+            if os.path.exists(self.storage_path):
+                shutil.copytree(self.storage_path, backup_path)
+            
+            # Recreate storage directory
+            os.makedirs(self.storage_path, exist_ok=True)
+            
+            # Try to recover wallets from backup
+            if os.path.exists(backup_path):
+                for file in os.listdir(backup_path):
+                    if file.endswith('.json'):
+                        try:
+                            with open(os.path.join(backup_path, file), 'r') as f:
+                                wallet_data = json.load(f)
+                                if self._verify_wallet_data(wallet_data):
+                                    with open(os.path.join(self.storage_path, file), 'w') as wf:
+                                        json.dump(wallet_data, wf, indent=4)
+                        except Exception as e:
+                            print_warning(f"Failed to recover wallet {file}: {e}")
+            
+            # Reload wallets
+            self._load_wallets()
+            return True
+        except Exception as e:
+            print_error(f"Storage recovery failed: {e}")
+            return False
 
     def create_wallet(self, name: str, passphrase: str) -> Wallet:
         """Create a new wallet and save it securely."""

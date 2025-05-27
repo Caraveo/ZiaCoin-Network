@@ -104,65 +104,114 @@ class Block:
 
 class Blockchain:
     def __init__(self):
-        self.storage = ChainStorage()
-        self.miner = Miner(self.storage)
-        self.chain: List[Block] = [self.create_genesis_block()]
-        self.difficulty = 4
-        self.pending_transactions: List[Transaction] = []
-        self._load_chain()
+        self.chain = []
+        self.pending_transactions = []
+        self.storage = {}
+        self.initialize()
 
-    def _load_chain(self):
-        """Load the blockchain from storage."""
-        self.chain = self.storage.load_chain()
-        if not self.chain:
-            self.chain = []
-            # Create genesis block
-            self._create_genesis_block()
+    def initialize(self) -> bool:
+        """Initialize the blockchain."""
+        try:
+            # Load existing chain if available
+            if os.path.exists('blockchain.json'):
+                with open('blockchain.json', 'r') as f:
+                    data = json.load(f)
+                    self.chain = [Block.from_dict(block) for block in data.get('chain', [])]
+                    self.pending_transactions = data.get('pending_transactions', [])
+                    self.storage = data.get('storage', {})
+                print_success("Blockchain loaded from storage")
+            else:
+                # Create new chain if none exists
+                self.create_genesis_block()
+                print_success("New blockchain initialized")
+            return True
+        except Exception as e:
+            print_error(f"Failed to initialize blockchain: {e}")
+            return False
 
-    def _create_genesis_block(self):
-        """Create the genesis block."""
-        genesis_block = {
-            'index': 0,
-            'timestamp': time(),
-            'transactions': [],
-            'previous_hash': '0' * 64,
-            'nonce': 0,
-            'difficulty': 4,
-            'merkle_root': hashlib.sha256(b'').hexdigest()
-        }
-        genesis_block['hash'] = self._calculate_block_hash(genesis_block)
-        genesis_block.pop('hash', None)
-        self.chain.append(Block(**genesis_block))
-        genesis_block['hash'] = self._calculate_block_hash(genesis_block)
-        self.storage.save_block(genesis_block)
+    def save_state(self) -> bool:
+        """Save the current state of the blockchain."""
+        try:
+            data = {
+                'chain': [block.to_dict() for block in self.chain],
+                'pending_transactions': self.pending_transactions,
+                'storage': self.storage
+            }
+            with open('blockchain.json', 'w') as f:
+                json.dump(data, f, indent=4)
+            print_success("Blockchain state saved")
+            return True
+        except Exception as e:
+            print_error(f"Failed to save blockchain state: {e}")
+            return False
 
-    def _calculate_block_hash(self, block: Dict) -> str:
-        """Calculate the hash of a block."""
-        block_string = json.dumps({
-            'index': block['index'],
-            'timestamp': str(block['timestamp']),
-            'transactions': [tx.to_dict() if hasattr(tx, 'to_dict') else tx for tx in block['transactions']],
-            'previous_hash': block['previous_hash'],
-            'nonce': block['nonce'],
-            'difficulty': block['difficulty'],
-            'merkle_root': block['merkle_root']
-        }, sort_keys=True).encode()
-        return hashlib.sha256(block_string).hexdigest()
-
-    @staticmethod
-    def create_genesis_block() -> Block:
+    def create_genesis_block(self) -> None:
         """Create the first block in the chain."""
-        return Block(
+        genesis_block = Block(
             index=0,
-            timestamp=time(),
+            timestamp=time.time(),
             transactions=[],
-            previous_hash="0" * 64,
+            previous_hash='0' * 64,
             nonce=0
         )
+        genesis_block.hash = genesis_block.calculate_hash()
+        self.chain.append(genesis_block)
+        print_success("Genesis block created")
 
     def get_latest_block(self) -> Block:
         """Get the most recent block in the chain."""
         return self.chain[-1]
+
+    def add_block(self, block: Block) -> bool:
+        """Add a new block to the chain."""
+        try:
+            if self.is_chain_valid():
+                self.chain.append(block)
+                self.save_state()
+                return True
+            return False
+        except Exception as e:
+            print_error(f"Failed to add block: {e}")
+            return False
+
+    def is_chain_valid(self) -> bool:
+        """Verify the integrity of the blockchain."""
+        try:
+            for i in range(1, len(self.chain)):
+                current_block = self.chain[i]
+                previous_block = self.chain[i-1]
+
+                # Verify current block's hash
+                if current_block.hash != current_block.calculate_hash():
+                    print_warning(f"Invalid hash in block {i}")
+                    return False
+
+                # Verify block's previous hash
+                if current_block.previous_hash != previous_block.hash:
+                    print_warning(f"Invalid previous hash in block {i}")
+                    return False
+
+            return True
+        except Exception as e:
+            print_error(f"Chain validation failed: {e}")
+            return False
+
+    def recover_chain(self) -> bool:
+        """Attempt to recover the blockchain from corruption."""
+        try:
+            # Try to load from backup if available
+            if os.path.exists('blockchain.json.backup'):
+                with open('blockchain.json.backup', 'r') as f:
+                    data = json.load(f)
+                    self.chain = [Block.from_dict(block) for block in data.get('chain', [])]
+                    self.pending_transactions = data.get('pending_transactions', [])
+                    self.storage = data.get('storage', {})
+                print_success("Blockchain recovered from backup")
+                return True
+            return False
+        except Exception as e:
+            print_error(f"Chain recovery failed: {e}")
+            return False
 
     def add_transaction(self, transaction: Transaction) -> int:
         """Add a new transaction to the pending transactions."""
@@ -190,27 +239,6 @@ class Blockchain:
         self.chain.append(new_block)
         self.pending_transactions = []
         return new_block
-
-    def is_chain_valid(self) -> bool:
-        """Verify the integrity of the blockchain."""
-        for i in range(1, len(self.chain)):
-            current_block = self.chain[i]
-            previous_block = self.chain[i-1]
-
-            # Verify block hash
-            if current_block.hash() != current_block.hash():
-                return False
-
-            # Verify previous hash
-            if current_block.previous_hash != previous_block.hash():
-                return False
-
-            # Verify all transactions
-            for transaction in current_block.transactions:
-                if not transaction.verify():
-                    return False
-
-        return True
 
     def get_chain(self) -> List[Dict]:
         """Get the entire blockchain."""
