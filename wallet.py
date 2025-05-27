@@ -10,6 +10,7 @@ import requests
 from modules.wallet.wallet import WalletManager
 from modules.blockchain.blockchain import Blockchain
 from modules.mnemonics.mnemonic import Mnemonic
+from modules.sync.sync import CodeSync
 
 # Configure logging
 logging.basicConfig(
@@ -23,7 +24,7 @@ def load_wallet_config() -> Dict[str, Any]:
     default_config = {
         "node": {
             "host": "localhost",
-            "port": 8333,
+            "port": 9999,
             "api_endpoints": {
                 "status": "/status",
                 "balance": "/balance/{address}",
@@ -52,6 +53,11 @@ def load_wallet_config() -> Dict[str, Any]:
             "level": "INFO",
             "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
             "file": "wallet.log"
+        },
+        "updates": {
+            "check_on_startup": False,
+            "auto_update": False,
+            "check_interval": 86400
         }
     }
     
@@ -72,6 +78,22 @@ def load_wallet_config() -> Dict[str, Any]:
         logger.error(f"Error loading wallet config: {e}")
         logger.warning("Using default configuration")
         return default_config
+
+def check_updates(config: Dict[str, Any]) -> None:
+    """Check for updates based on configuration settings."""
+    if not config['updates']['check_on_startup']:
+        return
+        
+    try:
+        sync = CodeSync()
+        if sync.check_for_updates():
+            if config['updates']['auto_update']:
+                sync.update()
+                logger.info("Code updated successfully")
+            else:
+                logger.info("Updates available. Run with --update to apply them.")
+    except Exception as e:
+        logger.error(f"Error checking for updates: {e}")
 
 def check_node_connection(config: Dict[str, Any]) -> bool:
     """Check if the node is running and accessible."""
@@ -218,7 +240,11 @@ def main():
         filename=config['logging']['file']
     )
     
+    # Check for updates if configured
+    check_updates(config)
+    
     parser = argparse.ArgumentParser(description='ZiaCoin Wallet CLI')
+    parser.add_argument('--update', action='store_true', help='Update to the latest version')
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # Create wallet record command
@@ -252,6 +278,12 @@ def main():
     args = parser.parse_args()
 
     try:
+        if args.update:
+            sync = CodeSync()
+            sync.update()
+            logger.info("Code updated successfully")
+            return
+            
         if args.command == 'createrecord':
             create_wallet_record(args, config)
         elif args.command == 'load':
