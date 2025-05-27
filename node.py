@@ -46,19 +46,19 @@ handler = logging.StreamHandler()
 handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 logger.addHandler(handler)
 
-def print_success(message: str):
+def print_success(message: str) -> None:
     """Print a success message in green."""
     print(f"{Fore.GREEN}✓ {message}{Style.RESET_ALL}")
 
-def print_error(message: str):
+def print_error(message: str) -> None:
     """Print an error message in red."""
     print(f"{Fore.RED}✗ {message}{Style.RESET_ALL}")
 
-def print_warning(message: str):
+def print_warning(message: str) -> None:
     """Print a warning message in yellow."""
     print(f"{Fore.YELLOW}⚠ {message}{Style.RESET_ALL}")
 
-def print_info(message: str):
+def print_info(message: str) -> None:
     """Print an info message in blue."""
     print(f"{Fore.BLUE}ℹ {message}{Style.RESET_ALL}")
 
