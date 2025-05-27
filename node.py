@@ -56,7 +56,7 @@ class Node:
                     await self.peer_network.connect_to_peer(host, int(port))
             
             # Start mining
-            self.miner.start()
+            self.miner.start_mining([])
             logger.info("Mining started")
             
             # Keep the node running
