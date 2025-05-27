@@ -12,6 +12,36 @@ from typing import List, Optional, Dict, Any
 from aiohttp import web
 from flask import Flask, request, jsonify
 from werkzeug.exceptions import HTTPException
+from colorama import init, Fore, Style
+
+# Initialize colorama
+init()
+
+def print_success(message: str) -> None:
+    """Print a success message in green."""
+    print(f"{Fore.GREEN}✓ {message}{Style.RESET_ALL}")
+
+def print_error(message: str) -> None:
+    """Print an error message in red."""
+    print(f"{Fore.RED}✗ {message}{Style.RESET_ALL}")
+
+def print_warning(message: str) -> None:
+    """Print a warning message in yellow."""
+    print(f"{Fore.YELLOW}⚠ {message}{Style.RESET_ALL}")
+
+def print_info(message: str) -> None:
+    """Print an info message in blue."""
+    print(f"{Fore.BLUE}ℹ {message}{Style.RESET_ALL}")
+
+# Add the modules directory to the Python path
+sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
+
+# Import the sync module
+from modules.sync.sync import CodeSync
+from modules.network.peer import PeerNetwork
+from modules.blockchain.blockchain import Blockchain
+from modules.mining.miner import Miner
+from modules.wallet.wallet import WalletManager
 
 from modules.network.peer import PeerNetwork
 from modules.blockchain.blockchain import Blockchain
@@ -45,22 +75,6 @@ logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 logger.addHandler(handler)
-
-def print_success(message: str) -> None:
-    """Print a success message in green."""
-    print(f"{Fore.GREEN}✓ {message}{Style.RESET_ALL}")
-
-def print_error(message: str) -> None:
-    """Print an error message in red."""
-    print(f"{Fore.RED}✗ {message}{Style.RESET_ALL}")
-
-def print_warning(message: str) -> None:
-    """Print a warning message in yellow."""
-    print(f"{Fore.YELLOW}⚠ {message}{Style.RESET_ALL}")
-
-def print_info(message: str) -> None:
-    """Print an info message in blue."""
-    print(f"{Fore.BLUE}ℹ {message}{Style.RESET_ALL}")
 
 class NodeError(Exception):
     """Base exception for node-related errors."""
