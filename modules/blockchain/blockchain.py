@@ -2,7 +2,7 @@ import sys
 import os
 import json
 import hashlib
-from time import time
+import time  # Use the module, not the function
 from typing import List, Dict, Optional
 from dataclasses import dataclass, asdict
 from cryptography.hazmat.primitives import hashes
@@ -18,7 +18,7 @@ class Transaction:
     sender: str
     recipient: str
     amount: float
-    timestamp: float = time()
+    timestamp: float = time.time()
     signature: Optional[str] = None
 
     def to_dict(self) -> Dict:
@@ -107,7 +107,7 @@ class Blockchain:
     def __init__(self):
         self.chain = []
         self.pending_transactions = []
-        self.storage = {}
+        self.storage = ChainStorage()
         self.initialize()
 
     def initialize(self) -> bool:
@@ -155,7 +155,7 @@ class Blockchain:
             previous_hash='0' * 64,
             nonce=0
         )
-        genesis_block.hash = genesis_block.calculate_hash()
+        genesis_block.hash = genesis_block.hash()
         self.chain.append(genesis_block)
         print_success("Genesis block created")
 
@@ -183,7 +183,7 @@ class Blockchain:
                 previous_block = self.chain[i-1]
 
                 # Verify current block's hash
-                if current_block.hash != current_block.calculate_hash():
+                if current_block.hash != current_block.hash():
                     print_warning(f"Invalid hash in block {i}")
                     return False
 
@@ -229,7 +229,7 @@ class Blockchain:
         previous_block = self.get_latest_block()
         new_block = Block(
             index=previous_block.index + 1,
-            timestamp=time(),
+            timestamp=time.time(),
             transactions=self.pending_transactions,
             previous_hash=previous_block.hash(),
             nonce=0,
