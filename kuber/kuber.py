@@ -126,7 +126,7 @@ class ZiaCoinKubernetes:
             user_data = """#!/bin/bash
 apt-get update
 apt-get install -y git python3-pip
-git clone https://github.com/your-org/ZiaCoin-Network.git
+git clone https://github.com/caraveo/ZiaCoin-Network.git
 cd ZiaCoin-Network/chain
 pip3 install -r requirements.txt
 python3 wallet.py createrecord "Node" "secure-passphrase"
