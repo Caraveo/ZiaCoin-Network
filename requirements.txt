@@ -1,0 +1,26 @@
+# Cryptographic library for hashing and digital signatures
+setuptools
+pycryptodome
+
+# For handling JSON data (useful for transaction serialization)
+simplejson
+
+# For networking (e.g., setting up nodes to communicate)
+flask>=3.0.0
+
+# Optional: For efficient data handling
+numpy
+cryptography>=42.0.0
+socketio
+asyncio
+scikit-learn
+pylance
+
+# Additional dependencies
+base58>=2.1.1
+
+# Testing
+pytest>=7.0.0
+
+# Added from the code block
+boto3>=1.34.0
