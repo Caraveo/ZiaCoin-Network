@@ -6,9 +6,11 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import requests
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 class CodeSync:
     def __init__(self, repo_url: str = "https://github.com/caraveo/ZiaCoin-Network.git"):
@@ -33,6 +35,18 @@ class CodeSync:
         
         # Version file
         self.version_file = 'version.json'
+        self.current_version = self._load_version()
+
+    def _load_version(self) -> Dict[str, Any]:
+        """Load current version information."""
+        try:
+            if os.path.exists(self.version_file):
+                with open(self.version_file, 'r') as f:
+                    return json.load(f)
+            return {"version": "0.1.0", "files": {}}
+        except Exception as e:
+            logger.error(f"Error loading version: {e}")
+            return {"version": "0.1.0", "files": {}}
 
     def get_local_hashes(self) -> Dict[str, str]:
         """Get SHA-256 hashes of local files."""
@@ -180,6 +194,41 @@ class CodeSync:
         except Exception as e:
             self.logger.error(f"Error during sync: {str(e)}")
             return False
+
+    def check_sync(self) -> bool:
+        """Check if code is in sync with version file."""
+        try:
+            current_files = self._get_file_hashes()
+            return current_files == self.current_version.get("files", {})
+        except Exception as e:
+            logger.error(f"Error checking sync: {e}")
+            return False
+
+    def _get_file_hashes(self) -> Dict[str, str]:
+        """Calculate SHA-256 hashes for all Python files."""
+        file_hashes = {}
+        for root, _, files in os.walk("."):
+            for file in files:
+                if file.endswith(".py"):
+                    file_path = os.path.join(root, file)
+                    try:
+                        with open(file_path, 'rb') as f:
+                            file_hash = hashlib.sha256(f.read()).hexdigest()
+                            file_hashes[file_path] = file_hash
+                    except Exception as e:
+                        logger.error(f"Error hashing {file_path}: {e}")
+        return file_hashes
+
+    def update_version(self):
+        """Update version file with current file hashes."""
+        try:
+            current_files = self._get_file_hashes()
+            self.current_version["files"] = current_files
+            with open(self.version_file, 'w') as f:
+                json.dump(self.current_version, f, indent=4)
+            logger.info("Version file updated successfully")
+        except Exception as e:
+            logger.error(f"Error updating version: {e}")
 
 def main():
     sync = CodeSync()
