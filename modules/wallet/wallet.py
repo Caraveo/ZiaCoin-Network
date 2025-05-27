@@ -138,7 +138,18 @@ class Wallet:
 
 class WalletManager:
     def __init__(self, storage_path: str = "wallets/", encryption_config: Dict = None, mnemonic_config: Dict = None):
+        """Initialize the wallet manager with explicit path handling."""
+        # Ensure storage_path is absolute and exists
         self.storage_path = os.path.abspath(storage_path)
+        print_info(f"[DEBUG] Initializing WalletManager with storage_path: {self.storage_path}")
+        
+        # Create storage directory if it doesn't exist
+        try:
+            os.makedirs(self.storage_path, exist_ok=True)
+        except Exception as e:
+            print_error(f"Failed to create storage directory: {e}")
+            raise
+        
         self.encryption_config = encryption_config or {
             "algorithm": "AES-GCM",
             "key_derivation": "PBKDF2",
@@ -150,14 +161,16 @@ class WalletManager:
         }
         self.wallets = {}
         self.storage = ChainStorage()
+        
+        # Initialize encryption with the correct key file path
+        key_file = os.path.join(self.storage_path, "master.key")
+        self.encryption = Encryption(key_file=key_file)
+        
         self.initialize()
 
     def initialize(self) -> bool:
         """Initialize the wallet manager."""
         try:
-            # Create storage directory if it doesn't exist
-            os.makedirs(self.storage_path, exist_ok=True)
-            
             # Load existing wallets
             self._load_wallets()
             
@@ -170,8 +183,9 @@ class WalletManager:
     def save_state(self) -> bool:
         """Save the current state of all wallets."""
         try:
-            # Save wallet index
             index_path = os.path.join(self.storage_path, "index.json")
+            print_info(f"[DEBUG] Saving wallet index to: {index_path}")
+            
             with open(index_path, 'w') as f:
                 json.dump({
                     "wallets": self.wallets,
@@ -280,9 +294,11 @@ class WalletManager:
     def create_wallet(self, name: str, passphrase: str) -> Wallet:
         """Create a new wallet and save it securely."""
         try:
+            # Create the wallet
             wallet = Wallet.create(name, passphrase)
+            print_info(f"[DEBUG] Created wallet with address: {wallet.address}")
             
-            # Create encrypted wallet data
+            # Prepare wallet data
             wallet_data = {
                 'name': wallet.name,
                 'address': wallet.address,
@@ -292,27 +308,45 @@ class WalletManager:
                 'created_at': time.time()
             }
             
-            # Encrypt wallet data
-            encryption = Encryption(self.encryption_config)
-            encrypted_data = encryption.encrypt(json.dumps(wallet_data), passphrase)
+            # Encrypt wallet data using password-based encryption
+            encrypted_data = self.encryption.encrypt_with_password(
+                json.dumps(wallet_data),
+                passphrase
+            )
+            
+            # Prepare file paths
+            wallet_filename = f"{name}.wallet"
+            wallet_path = os.path.join(self.storage_path, wallet_filename)
+            
+            print_info(f"[DEBUG] Saving wallet to: {wallet_path}")
             
             # Save encrypted wallet file
-            wallet_path = os.path.join(self.storage_path, f"{name}.wallet")
-            os.makedirs(os.path.dirname(wallet_path), exist_ok=True)
+            try:
+                with open(wallet_path, 'w') as f:
+                    json.dump(encrypted_data, f)
+                print_success(f"Wallet file saved: {wallet_filename}")
+            except Exception as e:
+                print_error(f"Failed to save wallet file: {e}")
+                raise
             
-            with open(wallet_path, 'wb') as f:
-                f.write(encrypted_data)
-            
-            # Save public info to index
+            # Update wallet index
             self.wallets[wallet.address] = {
                 'name': wallet.name,
                 'address': wallet.address,
                 'public_key': wallet.public_key,
-                'wallet_file': f"{name}.wallet"
+                'wallet_file': wallet_filename
             }
-            self.save_state()
+            
+            # Save wallet index
+            try:
+                self.save_state()
+                print_success("Wallet index updated")
+            except Exception as e:
+                print_error(f"Failed to save wallet index: {e}")
+                raise
             
             return wallet
+            
         except Exception as e:
             print_error(f"Failed to create wallet: {e}")
             raise
@@ -358,12 +392,35 @@ class WalletManager:
             'address': wallet.address,
             'public_key': wallet.public_key,
             'private_key': wallet.private_key,
-            'mnemonic': wallet.mnemonic
+            'mnemonic': wallet.mnemonic,
+            'created_at': time.time()
         }
         
-        self.storage.save_wallet(wallet.address, wallet_data, password=passphrase)
+        # Encrypt wallet data
+        encryption = Encryption(self.encryption_config)
+        encrypted_data = encryption.encrypt(json.dumps(wallet_data), passphrase)
+        
+        # Save encrypted wallet file
+        wallet_file = f"Recovered_{wallet.address[:8]}.wallet"
+        wallet_path = os.path.join(self.storage_path, wallet_file)
+        os.makedirs(os.path.dirname(wallet_path), exist_ok=True)
+        with open(wallet_path, 'wb') as f:
+            f.write(encrypted_data)
+        
+        # Save public info to index
+        self.wallets[wallet.address] = {
+            'name': wallet_data['name'],
+            'address': wallet.address,
+            'public_key': wallet.public_key,
+            'wallet_file': wallet_file
+        }
+        self.save_state()
         
         return wallet
+
+    def list_wallets(self):
+        """List all wallets (public info only)."""
+        return [info for info in self.wallets.values()]
 
 def main():
     parser = argparse.ArgumentParser(description='ZiaCoin Wallet Manager')
