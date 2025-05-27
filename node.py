@@ -10,6 +10,7 @@ from modules.network.peer import PeerNetwork
 from modules.blockchain.blockchain import Blockchain
 from modules.mining.miner import Miner
 from modules.wallet.wallet import WalletManager
+from modules.sync.sync import CodeSync
 
 # Configure logging
 logging.basicConfig(
