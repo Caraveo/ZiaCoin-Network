@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import sys
 import os
+import json
+import logging
+from typing import Dict, Any
 
 # Add the modules directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
@@ -8,26 +11,68 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
 # Import the sync module
 from modules.sync.sync import CodeSync
 
-def check_sync():
-    """Check if code is synchronized with remote repository."""
-    sync = CodeSync()
-    if not sync.sync():
-        print("Code synchronization failed. Please update your code.")
-        sys.exit(1)
+def load_config() -> Dict[str, Any]:
+    """Load configuration from app.conf file."""
+    default_config = {
+        "updates": {
+            "check_on_startup": False,
+            "auto_update": False,
+            "check_interval": 86400
+        },
+        "logging": {
+            "level": "INFO",
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            "file": "app.log"
+        }
+    }
+    
+    try:
+        if os.path.exists('app.conf'):
+            with open('app.conf', 'r') as f:
+                user_config = json.load(f)
+                # Merge with defaults, keeping user values where provided
+                for section in default_config:
+                    if section in user_config:
+                        default_config[section].update(user_config[section])
+                logger.info("Loaded configuration from app.conf")
+        else:
+            logger.warning("No app.conf found, using default configuration")
+            
+        return default_config
+    except Exception as e:
+        logger.error(f"Error loading app config: {e}")
+        logger.warning("Using default configuration")
+        return default_config
 
-# Check code synchronization before proceeding
-check_sync()
-
-from flask import Flask, request, jsonify
-from blockchain import Blockchain, Transaction
-from wallet import Wallet
-import json
-from typing import Dict, Any
-import logging
+def check_updates(config: Dict[str, Any]) -> None:
+    """Check for updates based on configuration settings."""
+    if not config['updates']['check_on_startup']:
+        return
+        
+    try:
+        sync = CodeSync()
+        if sync.check_for_updates():
+            if config['updates']['auto_update']:
+                sync.update()
+                logger.info("Code updated successfully")
+            else:
+                logger.info("Updates available. Run with --update to apply them.")
+    except Exception as e:
+        logger.error(f"Error checking for updates: {e}")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Load configuration
+config = load_config()
+
+# Check for updates if configured
+check_updates(config)
+
+from flask import Flask, request, jsonify
+from blockchain import Blockchain, Transaction
+from wallet import Wallet
 
 app = Flask(__name__)
 
