@@ -3,6 +3,7 @@ import json
 import threading
 import time
 import random
+import hashlib
 from typing import Dict, List, Set, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,6 +12,7 @@ import aiohttp
 import logging
 from ..storage import ChainStorage
 from ..mining import Miner
+from .dht import KademliaDHT, DHTNode
 
 @dataclass
 class Peer:
@@ -25,6 +27,7 @@ class PeerNetwork:
     def __init__(self, host: str = "0.0.0.0", port: int = 8333, bootstrap_nodes: List[Dict[str, Any]] = None):
         self.host = host
         self.port = port
+        self.node_id = hashlib.sha256(f"{host}:{port}".encode()).hexdigest()
         self.peers: Set[Peer] = set()
         self.bootstrap_nodes = bootstrap_nodes or [
             {"host": "seed1.ziacoin.net", "port": 8333},
@@ -36,6 +39,9 @@ class PeerNetwork:
         self.running = False
         self.logger = logging.getLogger("PeerNetwork")
         
+        # Initialize DHT
+        self.dht = KademliaDHT(self.node_id, host, port)
+        
         # Initialize logging
         logging.basicConfig(
             level=logging.INFO,
@@ -45,6 +51,9 @@ class PeerNetwork:
     async def start(self):
         """Start the peer network."""
         self.running = True
+        
+        # Start DHT
+        await self.dht.start()
         
         # Start server
         server = await asyncio.start_server(
@@ -232,51 +241,62 @@ class PeerNetwork:
             return False
 
     async def _discover_peers(self):
-        """Discover new peers from bootstrap nodes and existing peers."""
+        """Discover new peers using DHT."""
         while self.running:
             try:
                 # Try bootstrap nodes
                 for node in self.bootstrap_nodes:
                     try:
+                        bootstrap_node = DHTNode(
+                            node_id=hashlib.sha256(f"{node['host']}:{node['port']}".encode()).hexdigest(),
+                            host=node['host'],
+                            port=node['port'],
+                            last_seen=time.time()
+                        )
+                        await self.dht.add_node(bootstrap_node)
+                        
+                        # Get peers from bootstrap node
                         async with aiohttp.ClientSession() as session:
                             async with session.get(f"http://{node['host']}:{node['port']}/peers") as response:
                                 if response.status == 200:
                                     data = await response.json()
                                     for peer_data in data['peers']:
-                                        peer = Peer(
+                                        peer = DHTNode(
+                                            node_id=hashlib.sha256(f"{peer_data['host']}:{peer_data['port']}".encode()).hexdigest(),
                                             host=peer_data['host'],
                                             port=peer_data['port'],
                                             last_seen=time.time(),
                                             version=peer_data['version'],
                                             height=peer_data['height']
                                         )
-                                        with self.lock:
-                                            self.peers.add(peer)
+                                        await self.dht.add_node(peer)
+                                        await self.dht.store_peer(peer)
                     except Exception as e:
                         self.logger.error(f"Error connecting to bootstrap node {node['host']}: {str(e)}")
                 
-                # Ask existing peers for their peer list
-                with self.lock:
-                    peers_copy = self.peers.copy()
+                # Find more peers using DHT
+                target_id = hashlib.sha256(str(time.time()).encode()).hexdigest()
+                closest_nodes = await self.dht.find_node(target_id)
                 
-                for peer in peers_copy:
+                for node in closest_nodes:
                     try:
                         async with aiohttp.ClientSession() as session:
-                            async with session.get(f"http://{peer.host}:{peer.port}/peers") as response:
+                            async with session.get(f"http://{node.host}:{node.port}/peers") as response:
                                 if response.status == 200:
                                     data = await response.json()
                                     for peer_data in data['peers']:
-                                        new_peer = Peer(
+                                        peer = DHTNode(
+                                            node_id=hashlib.sha256(f"{peer_data['host']}:{peer_data['port']}".encode()).hexdigest(),
                                             host=peer_data['host'],
                                             port=peer_data['port'],
                                             last_seen=time.time(),
                                             version=peer_data['version'],
                                             height=peer_data['height']
                                         )
-                                        with self.lock:
-                                            self.peers.add(new_peer)
+                                        await self.dht.add_node(peer)
+                                        await self.dht.store_peer(peer)
                     except Exception as e:
-                        self.logger.error(f"Error getting peers from {peer.host}: {str(e)}")
+                        self.logger.error(f"Error getting peers from {node.host}: {str(e)}")
                 
             except Exception as e:
                 self.logger.error(f"Error in peer discovery: {str(e)}")
@@ -284,14 +304,22 @@ class PeerNetwork:
             await asyncio.sleep(300)  # Discover peers every 5 minutes
 
     async def _maintain_peers(self):
-        """Maintain peer list by removing inactive peers."""
+        """Maintain peer list using DHT."""
         while self.running:
             try:
+                # Update peer list from DHT
                 with self.lock:
-                    current_time = time.time()
                     self.peers = {
-                        peer for peer in self.peers
-                        if current_time - peer.last_seen < 3600  # Remove peers not seen in 1 hour
+                        Peer(
+                            host=node.host,
+                            port=node.port,
+                            last_seen=node.last_seen,
+                            version=node.version,
+                            height=node.height,
+                            is_active=node.is_active
+                        )
+                        for node in self.dht.routing_table.values()
+                        for node in bucket
                     }
             except Exception as e:
                 self.logger.error(f"Error maintaining peers: {str(e)}")
