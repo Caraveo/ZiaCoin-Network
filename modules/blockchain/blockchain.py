@@ -133,6 +133,7 @@ class Blockchain:
         genesis_block['hash'] = self._calculate_block_hash(genesis_block)
         genesis_block.pop('hash', None)
         self.chain.append(Block(**genesis_block))
+        genesis_block['hash'] = self._calculate_block_hash(genesis_block)
         self.storage.save_block(genesis_block)
 
     def _calculate_block_hash(self, block: Dict) -> str:
