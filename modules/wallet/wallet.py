@@ -364,11 +364,11 @@ class WalletManager:
                 raise ValueError("Wallet file not found")
             
             # Read and decrypt wallet data
-            with open(wallet_path, 'rb') as f:
-                encrypted_data = f.read()
+            with open(wallet_path, 'r') as f:
+                encrypted_data = json.load(f)
             
-            encryption = Encryption(self.encryption_config)
-            decrypted_data = encryption.decrypt(encrypted_data, passphrase)
+            # Use the already-initialized encryption instance
+            decrypted_data = self.encryption.decrypt_with_password(encrypted_data, passphrase)
             wallet_data = json.loads(decrypted_data)
             
             return Wallet(
@@ -396,16 +396,17 @@ class WalletManager:
             'created_at': time.time()
         }
         
-        # Encrypt wallet data
-        encryption = Encryption(self.encryption_config)
-        encrypted_data = encryption.encrypt(json.dumps(wallet_data), passphrase)
+        # Encrypt wallet data using password-based encryption
+        encrypted_data = self.encryption.encrypt_with_password(
+            json.dumps(wallet_data),
+            passphrase
+        )
         
         # Save encrypted wallet file
         wallet_file = f"Recovered_{wallet.address[:8]}.wallet"
         wallet_path = os.path.join(self.storage_path, wallet_file)
-        os.makedirs(os.path.dirname(wallet_path), exist_ok=True)
-        with open(wallet_path, 'wb') as f:
-            f.write(encrypted_data)
+        with open(wallet_path, 'w') as f:
+            json.dump(encrypted_data, f)
         
         # Save public info to index
         self.wallets[wallet.address] = {
