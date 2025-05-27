@@ -253,9 +253,13 @@ class WalletManager:
             # Create backup of current storage
             backup_path = f"{self.storage_path}.backup"
             if os.path.exists(self.storage_path):
+                if os.path.exists(backup_path):
+                    shutil.rmtree(backup_path)
                 shutil.copytree(self.storage_path, backup_path)
             
             # Recreate storage directory
+            if os.path.exists(self.storage_path):
+                shutil.rmtree(self.storage_path)
             os.makedirs(self.storage_path, exist_ok=True)
             
             # Try to recover wallets from backup
