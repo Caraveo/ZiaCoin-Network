@@ -11,7 +11,7 @@ import asyncio
 import aiohttp
 import logging
 from ..storage import ChainStorage
-from ..mining import Miner
+from ..mining.miner import Miner
 from .dht import KademliaDHT, DHTNode
 
 @dataclass
