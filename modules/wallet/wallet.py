@@ -138,7 +138,7 @@ class Wallet:
 
 class WalletManager:
     def __init__(self, storage_path: str = "wallets/", encryption_config: Dict = None, mnemonic_config: Dict = None):
-        self.storage_path = storage_path
+        self.storage_path = os.path.abspath(storage_path)
         self.encryption_config = encryption_config or {
             "algorithm": "AES-GCM",
             "key_derivation": "PBKDF2",
@@ -149,7 +149,7 @@ class WalletManager:
             "language": "english"
         }
         self.wallets = {}
-        self.storage = ChainStorage()  # Initialize storage
+        self.storage = ChainStorage()
         self.initialize()
 
     def initialize(self) -> bool:
@@ -170,17 +170,11 @@ class WalletManager:
     def save_state(self) -> bool:
         """Save the current state of all wallets."""
         try:
-            # Save each wallet
-            for address, wallet in self.wallets.items():
-                wallet_path = os.path.join(self.storage_path, f"{address}.json")
-                with open(wallet_path, 'w') as f:
-                    json.dump(wallet.to_dict(), f, indent=4)
-            
             # Save wallet index
             index_path = os.path.join(self.storage_path, "index.json")
             with open(index_path, 'w') as f:
                 json.dump({
-                    "wallets": list(self.wallets.keys()),
+                    "wallets": self.wallets,
                     "timestamp": time.time()
                 }, f, indent=4)
             
@@ -197,12 +191,7 @@ class WalletManager:
             if os.path.exists(index_path):
                 with open(index_path, 'r') as f:
                     index = json.load(f)
-                    for address in index.get("wallets", []):
-                        wallet_path = os.path.join(self.storage_path, f"{address}.json")
-                        if os.path.exists(wallet_path):
-                            with open(wallet_path, 'r') as wf:
-                                wallet_data = json.load(wf)
-                                self.wallets[address] = Wallet.from_dict(wallet_data)
+                    self.wallets = index.get("wallets", {})
                 print_success(f"Loaded {len(self.wallets)} wallets")
         except Exception as e:
             print_error(f"Failed to load wallets: {e}")
@@ -224,19 +213,25 @@ class WalletManager:
             # Verify each wallet file
             with open(index_path, 'r') as f:
                 index = json.load(f)
-                for address in index.get("wallets", []):
-                    wallet_path = os.path.join(self.storage_path, f"{address}.json")
+                for address, info in index.get("wallets", {}).items():
+                    wallet_path = os.path.join(self.storage_path, info['wallet_file'])
                     if not os.path.exists(wallet_path):
-                        print_warning(f"Wallet file not found: {address}")
+                        print_warning(f"Wallet file not found: {info['wallet_file']}")
                         return False
                     
                     # Verify wallet data
-                    with open(wallet_path, 'r') as wf:
-                        wallet_data = json.load(wf)
-                        if not self._verify_wallet_data(wallet_data):
-                            print_warning(f"Invalid wallet data: {address}")
+                    with open(wallet_path, 'rb') as wf:
+                        try:
+                            encrypted_data = wf.read()
+                            encryption = Encryption(self.encryption_config)
+                            decrypted_data = encryption.decrypt(encrypted_data, info.get('name', ''))
+                            wallet_data = json.loads(decrypted_data)
+                            if not self._verify_wallet_data(wallet_data):
+                                print_warning(f"Invalid wallet data: {info['wallet_file']}")
+                                return False
+                        except Exception as e:
+                            print_warning(f"Failed to decrypt/verify wallet {info['wallet_file']}: {e}")
                             return False
-            
             return True
         except Exception as e:
             print_error(f"Storage verification failed: {e}")
@@ -287,24 +282,34 @@ class WalletManager:
         try:
             wallet = Wallet.create(name, passphrase)
             
-            # Save wallet data
+            # Create encrypted wallet data
             wallet_data = {
                 'name': wallet.name,
                 'address': wallet.address,
                 'public_key': wallet.public_key,
                 'private_key': wallet.private_key,
-                'mnemonic': wallet.mnemonic
+                'mnemonic': wallet.mnemonic,
+                'created_at': time.time()
             }
             
-            # Save to file
-            wallet_path = os.path.join(self.storage_path, f"{wallet.address}.json")
+            # Encrypt wallet data
+            encryption = Encryption(self.encryption_config)
+            encrypted_data = encryption.encrypt(json.dumps(wallet_data), passphrase)
+            
+            # Save encrypted wallet file
+            wallet_path = os.path.join(self.storage_path, f"{name}.wallet")
             os.makedirs(os.path.dirname(wallet_path), exist_ok=True)
             
-            with open(wallet_path, 'w') as f:
-                json.dump(wallet_data, f, indent=4)
+            with open(wallet_path, 'wb') as f:
+                f.write(encrypted_data)
             
-            # Update wallet index
-            self.wallets[wallet.address] = wallet
+            # Save public info to index
+            self.wallets[wallet.address] = {
+                'name': wallet.name,
+                'address': wallet.address,
+                'public_key': wallet.public_key,
+                'wallet_file': f"{name}.wallet"
+            }
             self.save_state()
             
             return wallet
@@ -314,17 +319,34 @@ class WalletManager:
 
     def load_wallet(self, address: str, passphrase: str) -> Wallet:
         """Load a wallet using its address and passphrase."""
-        wallet_data = self.storage.load_wallet(address, password=passphrase)
-        if not wallet_data:
-            raise ValueError("Wallet not found or invalid passphrase")
-        
-        return Wallet(
-            private_key=wallet_data['private_key'],
-            public_key=wallet_data['public_key'],
-            address=wallet_data['address'],
-            mnemonic=wallet_data['mnemonic'],
-            name=wallet_data['name']
-        )
+        try:
+            # Find wallet file from index
+            wallet_info = self.wallets.get(address)
+            if not wallet_info:
+                raise ValueError("Wallet not found")
+            
+            wallet_path = os.path.join(self.storage_path, wallet_info['wallet_file'])
+            if not os.path.exists(wallet_path):
+                raise ValueError("Wallet file not found")
+            
+            # Read and decrypt wallet data
+            with open(wallet_path, 'rb') as f:
+                encrypted_data = f.read()
+            
+            encryption = Encryption(self.encryption_config)
+            decrypted_data = encryption.decrypt(encrypted_data, passphrase)
+            wallet_data = json.loads(decrypted_data)
+            
+            return Wallet(
+                private_key=wallet_data['private_key'],
+                public_key=wallet_data['public_key'],
+                address=wallet_data['address'],
+                mnemonic=wallet_data['mnemonic'],
+                name=wallet_data['name']
+            )
+        except Exception as e:
+            print_error(f"Failed to load wallet: {e}")
+            raise ValueError("Invalid passphrase or corrupted wallet file")
 
     def recover_wallet(self, mnemonic_phrase: str, passphrase: str) -> Wallet:
         """Recover a wallet using its mnemonic phrase and passphrase."""
