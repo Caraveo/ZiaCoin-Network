@@ -55,7 +55,7 @@ python3 start_mining.py --status
 
 - **Block Reward**: 50 ZIA per block
 - **Difficulty**: Adjusts automatically based on network hash rate
-- **Block Time**: Target ~60 seconds between blocks
+- **Block Time**: Target ~1 hour between blocks
 - **Transaction Fees**: Additional rewards from transaction fees
 
 ## 🔧 Mining Configuration
@@ -63,14 +63,14 @@ python3 start_mining.py --status
 ### **Difficulty Settings**
 - **Starting Difficulty**: 4 (4 leading zeros required)
 - **Auto-Adjustment**: Based on block time
-- **Target Block Time**: 60 seconds
+- **Target Block Time**: 1 hour (3600 seconds)
 
 ### **Mining Parameters**
 ```json
 {
     "difficulty": 4,
     "mining_reward": 50,
-    "block_time": 60,
+    "block_time": 3600,
     "max_block_size": 1048576
 }
 ```
@@ -84,6 +84,11 @@ python3 start_mining.py --status
 4. **Difficulty Check**: Hash must start with required zeros
 5. **Block Found**: Valid hash found, block added to chain
 6. **Reward**: 50 ZIA sent to miner's address
+
+### **Difficulty Adjustment**
+- **Fast Mining** (< 30 minutes): Difficulty increases
+- **Normal Mining** (30-120 minutes): No change
+- **Slow Mining** (> 120 minutes): Difficulty decreases
 
 ### **Mining Process**
 ```

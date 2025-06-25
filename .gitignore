@@ -36,6 +36,8 @@ chain.config
 kuber/
 wallets/
 wallets.backup/
+create_genesis_supply.py
+genesis_wallets.json
 *.log
 .DS_Store
 

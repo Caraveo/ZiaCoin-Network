@@ -82,6 +82,7 @@ class Node:
         self.peers = config['node']['peers']
         self.mining_difficulty = config['blockchain']['difficulty']
         self.mining_reward = config['blockchain']['mining_reward']
+        self.block_time = config['blockchain']['block_time']
         self.wallet_path = config['wallet']['storage_path'] if 'wallet' in config else 'wallets/'
         
         # Initialize components with config
@@ -89,6 +90,7 @@ class Node:
         self.peer_network = PeerNetwork(self.blockchain)
         self.miner = Miner(
             self.blockchain.storage,
+            target_block_time=self.block_time,
             difficulty=self.mining_difficulty,
             reward=self.mining_reward
         )
