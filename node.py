@@ -98,7 +98,7 @@ class Node:
             difficulty=self.mining_difficulty,
             reward=self.mining_reward
         )
-        self.wallet_manager = WalletManager()
+        self.wallet_manager = WalletManager(storage_path="chain/wallets/")
         
         # Initialize HTTP app
         self.app = Flask(__name__)

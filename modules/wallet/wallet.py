@@ -207,8 +207,14 @@ class WalletManager:
                     index = json.load(f)
                     self.wallets = index.get("wallets", {})
                 print_success(f"Loaded {len(self.wallets)} wallets")
+            else:
+                # Initialize empty wallet list if no index exists
+                self.wallets = {}
+                print_info("No wallet index found, starting with empty wallet list")
         except Exception as e:
             print_error(f"Failed to load wallets: {e}")
+            # Initialize empty wallet list on error
+            self.wallets = {}
 
     def verify_storage(self) -> bool:
         """Verify the integrity of wallet storage."""
@@ -228,24 +234,32 @@ class WalletManager:
             with open(index_path, 'r') as f:
                 index = json.load(f)
                 for address, info in index.get("wallets", {}).items():
-                    wallet_path = os.path.join(self.storage_path, info['wallet_file'])
+                    # Handle both regular and recovered wallets
+                    if info.get('type') == 'recovered':
+                        # Recovered wallet - use full path
+                        wallet_path = info['wallet_file']
+                    else:
+                        # Regular wallet - construct path
+                        wallet_path = os.path.join(self.storage_path, info['wallet_file'])
+                    
                     if not os.path.exists(wallet_path):
-                        print_warning(f"Wallet file not found: {info['wallet_file']}")
+                        print_warning(f"Wallet file not found: {wallet_path}")
                         return False
                     
-                    # Verify wallet data
-                    with open(wallet_path, 'rb') as wf:
-                        try:
-                            encrypted_data = wf.read()
-                            encryption = Encryption(self.encryption_config)
-                            decrypted_data = encryption.decrypt(encrypted_data, info.get('name', ''))
-                            wallet_data = json.loads(decrypted_data)
-                            if not self._verify_wallet_data(wallet_data):
-                                print_warning(f"Invalid wallet data: {info['wallet_file']}")
+                    # Verify wallet data can be read (but don't decrypt without passphrase)
+                    try:
+                        with open(wallet_path, 'r') as wf:
+                            encrypted_data = json.load(wf)
+                            # Basic structure validation
+                            if not isinstance(encrypted_data, dict):
+                                print_warning(f"Invalid wallet file format: {wallet_path}")
                                 return False
-                        except Exception as e:
-                            print_warning(f"Failed to decrypt/verify wallet {info['wallet_file']}: {e}")
-                            return False
+                            if 'encrypted_data' not in encrypted_data and 'salt' not in encrypted_data:
+                                print_warning(f"Invalid wallet encryption format: {wallet_path}")
+                                return False
+                    except Exception as e:
+                        print_warning(f"Failed to read wallet file {wallet_path}: {e}")
+                        return False
             return True
         except Exception as e:
             print_error(f"Storage verification failed: {e}")
@@ -253,7 +267,7 @@ class WalletManager:
 
     def _verify_wallet_data(self, wallet_data: Dict) -> bool:
         """Verify the integrity of wallet data."""
-        required_fields = ['address', 'public_key', 'encrypted_private_key']
+        required_fields = ['address', 'public_key', 'private_key', 'name']
         return all(field in wallet_data for field in required_fields)
 
     def recover_storage(self) -> bool:

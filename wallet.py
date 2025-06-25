@@ -55,7 +55,7 @@ def load_wallet_config() -> Dict[str, Any]:
             }
         },
         "wallet": {
-            "storage_path": "wallets/",
+            "storage_path": "chain/wallets/",
             "encryption": {
                 "algorithm": "AES-GCM",
                 "key_derivation": "PBKDF2",
