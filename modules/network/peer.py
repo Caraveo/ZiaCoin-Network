@@ -74,11 +74,41 @@ class PeerNetwork:
             print_error(f"Failed to initialize peer network: {e}")
             return False
 
-    def start(self, port: int, bootstrap_nodes: List[str] = None) -> None:
+    def start(self, port: int, bootstrap_nodes: List[str] = None, require_initial_node: bool = True) -> None:
         """Start the peer network."""
         if self.is_running:
             print_warning("Peer network already running")
             return
+
+        # Validate connection to initial node if required
+        if require_initial_node:
+            initial_node = "216.255.208.105:9999"
+            print_info(f"Validating connection to initial node: {initial_node}")
+            
+            try:
+                response = requests.get(f"http://{initial_node}/status", timeout=10)
+                if response.status_code == 200:
+                    print_success(f"✓ Initial node connection validated: {initial_node}")
+                    # Ensure initial node is in bootstrap nodes
+                    if bootstrap_nodes and initial_node not in bootstrap_nodes:
+                        bootstrap_nodes.insert(0, initial_node)
+                    elif not bootstrap_nodes:
+                        bootstrap_nodes = [initial_node]
+                else:
+                    print_error(f"✗ Initial node {initial_node} returned status {response.status_code}")
+                    raise ConnectionError(f"Initial node validation failed: {response.status_code}")
+            except requests.exceptions.ConnectionError:
+                print_error(f"✗ Failed to connect to initial node: {initial_node}")
+                print_error("Cannot start peer network without initial node connection")
+                raise ConnectionError(f"Cannot connect to initial node: {initial_node}")
+            except requests.exceptions.Timeout:
+                print_error(f"✗ Timeout connecting to initial node: {initial_node}")
+                print_error("Cannot start peer network without initial node connection")
+                raise ConnectionError(f"Timeout connecting to initial node: {initial_node}")
+            except Exception as e:
+                print_error(f"✗ Error validating initial node: {e}")
+                print_error("Cannot start peer network without initial node connection")
+                raise ConnectionError(f"Initial node validation error: {e}")
 
         self.is_running = True
         self.sync_thread = threading.Thread(

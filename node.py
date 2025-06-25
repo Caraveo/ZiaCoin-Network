@@ -79,10 +79,11 @@ class NodeValidationError(NodeError):
     pass
 
 class Node:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], is_initial_node: bool = False):
         self.config = config
-        self.port = config['node']['port']
+        self.is_initial_node = is_initial_node
         self.host = config['node']['host']
+        self.port = config['node']['port']
         self.peers = config['node']['peers']
         self.mining_difficulty = config['blockchain']['difficulty']
         self.mining_reward = config['blockchain']['mining_reward']
@@ -324,6 +325,22 @@ class Node:
             if not self.peer_network.initialize():
                 raise NodeError("Failed to initialize peer network")
             
+            # Start peer network with initial node validation
+            try:
+                # Initial nodes don't require connection to themselves
+                require_initial_node = not self.is_initial_node
+                self.peer_network.start(
+                    port=self.port,
+                    bootstrap_nodes=self.peers,
+                    require_initial_node=require_initial_node
+                )
+            except ConnectionError as e:
+                if not self.is_initial_node:
+                    print_error(f"Failed to connect to initial node: {e}")
+                    raise NodeError("Cannot start node without initial node connection")
+                else:
+                    print_warning(f"Initial node mode - skipping initial node validation: {e}")
+            
             # Initialize miner
             if not self.miner.initialize():
                 raise NodeError("Failed to initialize miner")
@@ -467,6 +484,7 @@ def main():
         # Parse command line arguments
         parser = argparse.ArgumentParser(description='ZiaCoin Node')
         parser.add_argument('--genesis', action='store_true', help='Create genesis block')
+        parser.add_argument('--init', action='store_true', help='Run as initial bootstrap node (216.255.208.105)')
         parser.add_argument('--bootstrap', action='store_true', help='Run as bootstrap node')
         parser.add_argument('--port', type=int, help='Port to run the node on')
         parser.add_argument('--host', type=str, help='Host to bind the node to')
@@ -480,7 +498,16 @@ def main():
             config['node']['port'] = args.port
         if args.host:
             config['node']['host'] = args.host
-        if args.bootstrap:
+
+        # Handle initial node (216.255.208.105)
+        if args.init:
+            # Set as initial bootstrap node
+            config['node']['host'] = args.host or "0.0.0.0"
+            config['node']['port'] = args.port or 9999
+            print_success(f"Starting as INITIAL bootstrap node on {config['node']['host']}:{config['node']['port']}")
+            print_info(f"External access: http://216.255.208.105:9999")
+            print_info("This is the main network entry point")
+        elif args.bootstrap:
             # Set as bootstrap node
             config['node']['host'] = args.host or config['node']['host']
             config['node']['port'] = args.port or config['node']['port']
@@ -490,9 +517,41 @@ def main():
                 config['node']['peers'].insert(0, external_peer)
             print_success(f"Starting as bootstrap node on {config['node']['host']}:{config['node']['port']}")
             print_info(f"External access: http://216.255.208.105:9999")
+        else:
+            # Regular node - MUST connect to initial node first
+            print_info("Regular node mode - attempting to connect to initial node...")
+            initial_node = "216.255.208.105:9999"
+            
+            # Test connection to initial node
+            try:
+                import requests
+                response = requests.get(f"http://{initial_node}/status", timeout=10)
+                if response.status_code == 200:
+                    print_success(f"✓ Connected to initial node: {initial_node}")
+                    # Add initial node as first peer
+                    if initial_node not in config['node']['peers']:
+                        config['node']['peers'].insert(0, initial_node)
+                else:
+                    print_error(f"✗ Initial node {initial_node} returned status {response.status_code}")
+                    print_error("Cannot start node without connection to initial node")
+                    sys.exit(1)
+            except requests.exceptions.ConnectionError:
+                print_error(f"✗ Failed to connect to initial node: {initial_node}")
+                print_error("Cannot start node without connection to initial node")
+                print_error("Make sure the initial node (216.255.208.105:9999) is running")
+                sys.exit(1)
+            except requests.exceptions.Timeout:
+                print_error(f"✗ Timeout connecting to initial node: {initial_node}")
+                print_error("Cannot start node without connection to initial node")
+                sys.exit(1)
+            except Exception as e:
+                print_error(f"✗ Error connecting to initial node: {e}")
+                print_error("Cannot start node without connection to initial node")
+                sys.exit(1)
         
         # Create node instance
-        node = Node(config)
+        is_initial_node = args.init
+        node = Node(config, is_initial_node=is_initial_node)
         
         # Handle genesis block creation
         if args.genesis:
