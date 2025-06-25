@@ -163,7 +163,7 @@ class WalletManager:
         self.storage = ChainStorage()
         
         # Initialize encryption with the correct key file path
-        key_file = os.path.join(self.storage_path, "master.key")
+        key_file = "chain/keys/master.key"  # Use the same key file as the rest of the system
         self.encryption = Encryption(key_file=key_file)
         
         self.initialize()
