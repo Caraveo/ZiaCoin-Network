@@ -27,8 +27,9 @@ class Peer:
     is_active: bool = True
 
 class PeerNetwork:
-    def __init__(self, blockchain):
+    def __init__(self, blockchain, is_initial_node: bool = False):
         self.blockchain = blockchain
+        self.is_initial_node = is_initial_node
         self.peers = set()
         self.is_running = False
         self.sync_thread = None
@@ -63,10 +64,13 @@ class PeerNetwork:
             self.is_running = False
             
             # Load known peers from storage if available
-            if os.path.exists('peers.json'):
-                with open('peers.json', 'r') as f:
+            peers_file = os.path.join('chain', 'peers.json')
+            if os.path.exists(peers_file):
+                with open(peers_file, 'r') as f:
                     self.peers = set(json.load(f))
                 print_success(f"Loaded {len(self.peers)} known peers")
+            else:
+                print_info("No known peers found")
             
             print_success("Peer network initialized")
             return True
@@ -80,8 +84,8 @@ class PeerNetwork:
             print_warning("Peer network already running")
             return
 
-        # Validate connection to initial node if required
-        if require_initial_node:
+        # Validate connection to initial node if required (but not for initial nodes themselves)
+        if require_initial_node and not self.is_initial_node:
             initial_node = "216.255.208.105:9999"
             print_info(f"Validating connection to initial node: {initial_node}")
             
@@ -109,6 +113,11 @@ class PeerNetwork:
                 print_error(f"✗ Error validating initial node: {e}")
                 print_error("Cannot start peer network without initial node connection")
                 raise ConnectionError(f"Initial node validation error: {e}")
+        elif self.is_initial_node:
+            print_info("Initial node mode - serving as network entry point")
+            print_info("✓ Waiting for other nodes to connect")
+        else:
+            print_info("No bootstrap nodes provided")
 
         self.is_running = True
         self.sync_thread = threading.Thread(
@@ -127,8 +136,10 @@ class PeerNetwork:
                 if self.sync_thread:
                     self.sync_thread.join(timeout=5)
                 
-                # Save current peers
-                with open('peers.json', 'w') as f:
+                # Save current peers to chain folder
+                peers_file = os.path.join('chain', 'peers.json')
+                os.makedirs('chain', exist_ok=True)  # Ensure chain directory exists
+                with open(peers_file, 'w') as f:
                     json.dump(list(self.peers), f)
                 
                 print_success("Peer network stopped")
@@ -138,14 +149,24 @@ class PeerNetwork:
     def _sync_loop(self, port: int, bootstrap_nodes: List[str] = None) -> None:
         """Main synchronization loop."""
         try:
-            # Connect to bootstrap nodes
-            if bootstrap_nodes:
+            # Connect to bootstrap nodes (skip if this is the initial node)
+            if bootstrap_nodes and not self.is_initial_node:
+                print_info("Connecting to bootstrap nodes...")
                 for node in bootstrap_nodes:
                     try:
                         host, node_port = node.split(':')
+                        # Skip connecting to ourselves if we're the initial node
+                        if self.is_initial_node and host == "216.255.208.105" and int(node_port) == 9999:
+                            print_info("Skipping connection to self (initial node)")
+                            continue
                         self._connect_to_peer(host, int(node_port))
                     except Exception as e:
                         print_warning(f"Failed to connect to bootstrap node {node}: {e}")
+            elif self.is_initial_node:
+                print_info("Initial node mode - serving as network entry point")
+                print_info("✓ Waiting for other nodes to connect")
+            else:
+                print_info("No bootstrap nodes provided")
 
             # Start periodic sync
             while self.is_running:

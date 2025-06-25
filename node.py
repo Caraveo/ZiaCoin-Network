@@ -92,14 +92,9 @@ class Node:
         
         # Initialize components with config
         self.blockchain = Blockchain()
-        self.peer_network = PeerNetwork(self.blockchain)
-        self.miner = Miner(
-            self.blockchain.storage,
-            target_block_time=self.block_time,
-            difficulty=self.mining_difficulty,
-            reward=self.mining_reward
-        )
-        self.wallet_manager = WalletManager(storage_path="chain/wallets/")
+        self.peer_network = PeerNetwork(self.blockchain, is_initial_node=self.is_initial_node)
+        self.miner = Miner(self.blockchain.storage, target_block_time=self.block_time, difficulty=self.mining_difficulty, reward=self.mining_reward)
+        self.wallet_manager = WalletManager(storage_path=self.wallet_path)
         
         # Initialize HTTP app
         self.app = Flask(__name__)
@@ -169,6 +164,10 @@ class Node:
     def check_peer_connections(self):
         """Check and maintain peer connections."""
         try:
+            # Skip peer connection checks for initial nodes
+            if self.is_initial_node:
+                return
+                
             for peer in self.peers:
                 try:
                     response = requests.get(
@@ -625,11 +624,12 @@ def main():
 
         # Handle initial node (216.255.208.105)
         if args.init:
-            # Set as initial bootstrap node
+            # Set as initial bootstrap node - serve on 0.0.0.0 for external access
             config['node']['host'] = args.host or "0.0.0.0"
             config['node']['port'] = args.port or 9999
             print_success(f"Starting as INITIAL bootstrap node on {config['node']['host']}:{config['node']['port']}")
             print_info(f"External access: http://216.255.208.105:9999")
+            print_info("Internal connection: http://127.0.0.1:9999")
             print_info("This is the main network entry point")
         elif args.bootstrap:
             # Set as bootstrap node
