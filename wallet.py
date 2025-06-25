@@ -127,7 +127,7 @@ def check_node_connection(config: Dict[str, Any]) -> bool:
 def create_wallet_record(args, config: Dict[str, Any]):
     """Create a new wallet with mnemonic and passphrase protection."""
     if not check_node_connection(config):
-        print_error("Cannot create wallet without node connection")
+        print_error("No node connection. Wallet CLI will now exit.")
         sys.exit(1)
         
     try:
@@ -156,7 +156,7 @@ def create_wallet_record(args, config: Dict[str, Any]):
 def load_wallet(args, config: Dict[str, Any]):
     """Load an existing wallet by address and passphrase."""
     if not check_node_connection(config):
-        print_error("Cannot load wallet without node connection")
+        print_error("No node connection. Wallet CLI will now exit.")
         sys.exit(1)
         
     try:
@@ -181,7 +181,7 @@ def load_wallet(args, config: Dict[str, Any]):
 def get_balance(args, config: Dict[str, Any]):
     """Get wallet balance."""
     if not check_node_connection(config):
-        print_error("Cannot check balance without node connection")
+        print_error("No node connection. Wallet CLI will now exit.")
         sys.exit(1)
         
     try:
@@ -202,7 +202,7 @@ def get_balance(args, config: Dict[str, Any]):
 def send_transaction(args, config: Dict[str, Any]):
     """Send ZIA to another address."""
     if not check_node_connection(config):
-        print_error("Cannot send transaction without node connection")
+        print_error("No node connection. Wallet CLI will now exit.")
         sys.exit(1)
         
     try:
@@ -215,7 +215,7 @@ def send_transaction(args, config: Dict[str, Any]):
         
         # Create transaction
         transaction_data = {
-            'sender': args.from_address,
+            'sender': wallet.public_key,
             'recipient': args.to_address,
             'amount': float(args.amount),
             'private_key': wallet.private_key
@@ -244,7 +244,7 @@ def send_transaction(args, config: Dict[str, Any]):
 def list_wallets(args, config: Dict[str, Any]):
     """List all wallets."""
     if not check_node_connection(config):
-        print_error("Cannot list wallets without node connection")
+        print_error("No node connection. Wallet CLI will now exit.")
         sys.exit(1)
         
     try:
@@ -268,7 +268,7 @@ def list_wallets(args, config: Dict[str, Any]):
 def recover_wallet(args, config: Dict[str, Any]):
     """Recover wallet from mnemonic phrase."""
     if not check_node_connection(config):
-        print_error("Cannot recover wallet without node connection")
+        print_error("No node connection. Wallet CLI will now exit.")
         sys.exit(1)
         
     try:

@@ -217,19 +217,24 @@ class Node:
                 if not self.validate_transaction_data(data):
                     raise NodeValidationError("Invalid transaction data")
 
-                transaction = self.blockchain.create_transaction(
+                # Create transaction object
+                from modules.blockchain.blockchain import Transaction
+                transaction = Transaction(
                     sender=data['sender'],
                     recipient=data['recipient'],
-                    amount=float(data['amount']),
-                    private_key=data['private_key']
+                    amount=float(data['amount'])
                 )
-
-                if not transaction:
-                    raise NodeValidationError("Failed to create transaction")
+                
+                # Sign the transaction
+                transaction.sign(data['private_key'])
+                
+                # Add transaction to blockchain
+                transaction_index = self.blockchain.add_transaction(transaction)
 
                 return jsonify({
                     'message': 'Transaction added to pool',
-                    'transaction': transaction.to_dict()
+                    'transaction': transaction.to_dict(),
+                    'transaction_index': transaction_index
                 }), 201
             except ValueError as e:
                 raise NodeValidationError(str(e))
