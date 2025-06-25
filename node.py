@@ -624,12 +624,11 @@ def main():
 
         # Handle initial node (216.255.208.105)
         if args.init:
-            # Set as initial bootstrap node - serve on 0.0.0.0 for external access
-            config['node']['host'] = args.host or "0.0.0.0"
+            # Set as initial bootstrap node - serve on mainnet IP
+            config['node']['host'] = args.host or "216.255.208.105"
             config['node']['port'] = args.port or 9999
             print_success(f"Starting as INITIAL bootstrap node on {config['node']['host']}:{config['node']['port']}")
-            print_info(f"External access: http://216.255.208.105:9999")
-            print_info("Internal connection: http://127.0.0.1:9999")
+            print_info(f"Mainnet access: http://216.255.208.105:9999")
             print_info("This is the main network entry point")
         elif args.bootstrap:
             # Set as bootstrap node
