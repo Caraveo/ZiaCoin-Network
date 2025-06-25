@@ -39,7 +39,7 @@ A modern, secure, and efficient blockchain implementation built with Python. Zia
 - Python 3.8 or higher
 - Git
 
-### Installation
+### Quick Installation
 
 1. Clone the repository:
 ```bash
@@ -50,65 +50,6 @@ cd ZiaCoin-Network
 2. Install dependencies:
 ```bash
 pip3 install -r requirements.txt
-```
-
-### Configuration
-
-The network uses two configuration files:
-
-1. `chain.config` - Node configuration:
-```json
-{
-    "network": {
-        "port": 9999,
-        "bootstrap_nodes": []
-    },
-    "mining": {
-        "difficulty": 4,
-        "reward": 50
-    },
-    "wallet": {
-        "storage_path": "wallets/"
-    }
-}
-```
-
-2. `wallet.conf` - Wallet configuration:
-```json
-{
-    "node": {
-        "host": "localhost",
-        "port": 9999,
-        "api_endpoints": {
-            "status": "/status",
-            "balance": "/balance/{address}",
-            "transaction": "/transaction",
-            "chain": "/chain"
-        }
-    },
-    "wallet": {
-        "storage_path": "wallets/",
-        "encryption": {
-            "algorithm": "AES-GCM",
-            "key_derivation": "PBKDF2",
-            "iterations": 100000
-        },
-        "mnemonic": {
-            "word_count": 12,
-            "language": "english"
-        }
-    },
-    "security": {
-        "max_attempts": 3,
-        "lockout_duration": 300,
-        "session_timeout": 1800
-    },
-    "logging": {
-        "level": "INFO",
-        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        "file": "wallet.log"
-    }
-}
 ```
 
 ### Basic Usage
@@ -158,15 +99,6 @@ python3 wallet.py send "from-address" "to-address" "amount"
 python3 wallet.py list
 ```
 
-## 📚 API Endpoints
-
-The node exposes the following HTTP API endpoints:
-
-- `GET /status` - Get node status
-- `GET /balance/{address}` - Get wallet balance
-- `POST /transaction` - Create a new transaction
-- `GET /chain` - Get the full blockchain
-
 ## 🔒 Security
 
 - All private keys are encrypted using AES-GCM
@@ -174,18 +106,6 @@ The node exposes the following HTTP API endpoints:
 - Automatic code synchronization ensures you're running the latest secure version
 - Regular security audits and updates
 - Configurable security settings in wallet.conf
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the Zia Open License v1.0.1 - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
