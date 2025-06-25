@@ -143,66 +143,97 @@ class Blockchain:
     def initialize(self) -> bool:
         """Initialize the blockchain."""
         try:
-            # Load existing chain if available
-            if os.path.exists('blockchain.json'):
-                with open('blockchain.json', 'r') as f:
-                    data = json.load(f)
-                    self.chain = [Block.from_dict(block) for block in data.get('chain', [])]
-                    self.pending_transactions = data.get('pending_transactions', [])
-                    # Don't try to load storage from JSON
-                print_success("Blockchain loaded from storage")
+            # Try to load existing chain from ChainStorage first
+            existing_blocks = self.storage.load_chain()
+            if existing_blocks:
+                # Convert block dicts back to Block objects
+                self.chain = [Block.from_dict(block) for block in existing_blocks]
+                print_success(f"Blockchain loaded from ChainStorage: {len(self.chain)} blocks")
             else:
-                # Create new chain if none exists
-                self.create_genesis_block()
-                print_success("New blockchain initialized")
+                # Check if old blockchain.json exists and migrate it
+                if os.path.exists('blockchain.json'):
+                    print_info("Found old blockchain.json, migrating to new format...")
+                    self._migrate_from_old_format()
+                else:
+                    # Create new chain if none exists
+                    self.create_genesis_block()
+                    print_success("New blockchain initialized")
+            
+            # Load pending transactions from chain state
+            chain_state = self.storage.load_chain_state()
+            if chain_state:
+                self.pending_transactions = chain_state.get('pending_transactions', [])
+            
             return True
         except Exception as e:
             print_error(f"Failed to initialize blockchain: {e}")
             return False
 
-    def save_state(self) -> bool:
-        """Save the current state of the blockchain."""
+    def _migrate_from_old_format(self) -> bool:
+        """Migrate from old blockchain.json format to new ChainStorage format."""
         try:
-            # Create a safe copy of the chain data
-            chain_data = []
-            for block in self.chain:
-                try:
-                    block_dict = {
-                        'index': block.index,
-                        'timestamp': block.timestamp,
-                        'transactions': [tx.to_dict() if hasattr(tx, 'to_dict') else tx for tx in block.transactions],
-                        'previous_hash': block.previous_hash,
-                        'nonce': block.nonce,
-                        'difficulty': block.difficulty,
-                        'merkle_root': block.merkle_root,
-                        'hash': block.block_hash if block.block_hash else block.hash()
-                    }
-                    chain_data.append(block_dict)
-                except Exception as e:
-                    print_warning(f"Error serializing block {getattr(block, 'index', 'unknown')}: {e}")
-                    continue
+            # Load old format
+            with open('blockchain.json', 'r') as f:
+                data = json.load(f)
             
-            # Create safe copy of pending transactions
-            pending_data = []
-            for tx in self.pending_transactions:
-                try:
-                    if hasattr(tx, 'to_dict'):
-                        pending_data.append(tx.to_dict())
-                    else:
-                        pending_data.append(tx)
-                except Exception as e:
-                    print_warning(f"Error serializing transaction: {e}")
-                    continue
+            # Convert blocks to new format
+            old_blocks = data.get('chain', [])
+            for block_data in old_blocks:
+                block = Block.from_dict(block_data)
+                self.chain.append(block)
+                # Save to new storage
+                self.storage.save_block(block_data)
             
-            data = {
-                'chain': chain_data,
-                'pending_transactions': pending_data,
-                'storage': {}  # Store empty dict instead of storage object
+            # Save chain state
+            chain_state = {
+                'height': len(self.chain) - 1 if self.chain else 0,
+                'latest_block_hash': self.chain[-1].block_hash if self.chain else None,
+                'difficulty': self.chain[-1].difficulty if self.chain else 4,
+                'pending_transactions': data.get('pending_transactions', []),
+                'migrated_at': time.time()
             }
+            self.storage.save_chain_state(chain_state)
             
-            with open('blockchain.json', 'w') as f:
-                json.dump(data, f, indent=4)
-            print_success("Blockchain state saved")
+            # Create backup of old file
+            backup_file = f"blockchain_backup_{int(time.time())}.json"
+            import shutil
+            shutil.copy2('blockchain.json', backup_file)
+            
+            print_success(f"Migrated {len(old_blocks)} blocks to new format")
+            print_success(f"Old file backed up as: {backup_file}")
+            return True
+        except Exception as e:
+            print_error(f"Migration failed: {e}")
+            return False
+
+    def save_state(self) -> bool:
+        """Save the current state of the blockchain using ChainStorage."""
+        try:
+            # Save each block to ChainStorage
+            for block in self.chain:
+                block_data = {
+                    'index': block.index,
+                    'timestamp': block.timestamp,
+                    'transactions': [tx.to_dict() if hasattr(tx, 'to_dict') else tx for tx in block.transactions],
+                    'previous_hash': block.previous_hash,
+                    'nonce': block.nonce,
+                    'difficulty': block.difficulty,
+                    'merkle_root': block.merkle_root,
+                    'hash': block.block_hash if block.block_hash else block.hash()
+                }
+                self.storage.save_block(block_data)
+            
+            # Save chain state
+            chain_state = {
+                'height': len(self.chain) - 1 if self.chain else 0,
+                'latest_block_hash': self.chain[-1].block_hash if self.chain else None,
+                'difficulty': self.chain[-1].difficulty if self.chain else 4,
+                'pending_transactions': [tx.to_dict() if hasattr(tx, 'to_dict') else tx for tx in self.pending_transactions],
+                'last_saved': time.time()
+            }
+            self.storage.save_chain_state(chain_state)
+            
+            print_success("Blockchain state saved to ChainStorage")
             return True
         except Exception as e:
             print_error(f"Failed to save blockchain state: {e}")
@@ -230,6 +261,18 @@ class Blockchain:
         try:
             if self.is_chain_valid():
                 self.chain.append(block)
+                # Save block to ChainStorage immediately
+                block_data = {
+                    'index': block.index,
+                    'timestamp': block.timestamp,
+                    'transactions': [tx.to_dict() if hasattr(tx, 'to_dict') else tx for tx in block.transactions],
+                    'previous_hash': block.previous_hash,
+                    'nonce': block.nonce,
+                    'difficulty': block.difficulty,
+                    'merkle_root': block.merkle_root,
+                    'hash': block.block_hash if block.block_hash else block.hash()
+                }
+                self.storage.save_block(block_data)
                 self.save_state()
                 return True
             return False
@@ -262,15 +305,27 @@ class Blockchain:
     def recover_chain(self) -> bool:
         """Attempt to recover the blockchain from corruption."""
         try:
-            # Try to load from backup if available
+            # Try to recover from ChainStorage backup first
+            if hasattr(self.storage, 'backup_chain'):
+                try:
+                    self.storage.restore_chain('backup')
+                    print_success("Blockchain recovered from ChainStorage backup")
+                    return True
+                except:
+                    pass
+            
+            # Try to load from old backup if available
             if os.path.exists('blockchain.json.backup'):
                 with open('blockchain.json.backup', 'r') as f:
                     data = json.load(f)
                     self.chain = [Block.from_dict(block) for block in data.get('chain', [])]
                     self.pending_transactions = data.get('pending_transactions', [])
-                    # Don't try to load storage from JSON
-                print_success("Blockchain recovered from backup")
+                    # Migrate to new format
+                    self._migrate_from_old_format()
+                print_success("Blockchain recovered from old backup and migrated")
                 return True
+            
+            print_warning("No backup found for recovery")
             return False
         except Exception as e:
             print_error(f"Chain recovery failed: {e}")
@@ -300,6 +355,20 @@ class Blockchain:
 
         new_block.mine_block()
         self.chain.append(new_block)
+        
+        # Save new block to ChainStorage immediately
+        block_data = {
+            'index': new_block.index,
+            'timestamp': new_block.timestamp,
+            'transactions': [tx.to_dict() if hasattr(tx, 'to_dict') else tx for tx in new_block.transactions],
+            'previous_hash': new_block.previous_hash,
+            'nonce': new_block.nonce,
+            'difficulty': new_block.difficulty,
+            'merkle_root': new_block.merkle_root,
+            'hash': new_block.block_hash if new_block.block_hash else new_block.hash()
+        }
+        self.storage.save_block(block_data)
+        
         self.pending_transactions = []
         return new_block
 
