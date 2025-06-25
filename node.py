@@ -647,7 +647,7 @@ def main():
             
             # Determine initial node based on test mode
             if args.test:
-                initial_node = "192.168.1.236:9999"  # Test initial node IP
+                initial_node = "127.0.0.1:9999"  # Test initial node IP (localhost)
                 print_info("🧪 Test mode - connecting to test initial node")
             else:
                 initial_node = "216.255.208.105:9999"  # Mainnet initial node
@@ -670,7 +670,7 @@ def main():
                 print_error(f"✗ Failed to connect to initial node: {initial_node}")
                 print_error("Cannot start node without connection to initial node")
                 if args.test:
-                    print_error("Make sure the test initial node (192.168.1.236:9999) is running")
+                    print_error("Make sure the test initial node (127.0.0.1:9999) is running")
                 else:
                     print_error("Make sure the initial node (216.255.208.105:9999) is running")
                 sys.exit(1)
