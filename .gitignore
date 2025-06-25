@@ -45,4 +45,5 @@ genesis_wallets.json
 chain/
 chain/blocks/
 chain/wallets/
-chain/keys/ 
+chain/keys/
+chain/restored/ 

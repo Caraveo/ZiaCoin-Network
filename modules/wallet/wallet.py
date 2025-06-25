@@ -359,16 +359,23 @@ class WalletManager:
             if not wallet_info:
                 raise ValueError("Wallet not found")
             
-            wallet_path = os.path.join(self.storage_path, wallet_info['wallet_file'])
+            # Handle both regular and recovered wallets
+            if wallet_info.get('type') == 'recovered':
+                # Recovered wallet - use full path
+                wallet_path = wallet_info['wallet_file']
+            else:
+                # Regular wallet - construct path
+                wallet_path = os.path.join(self.storage_path, wallet_info['wallet_file'])
+            
             if not os.path.exists(wallet_path):
                 raise ValueError("Wallet file not found")
             
             # Read and decrypt wallet data
-            with open(wallet_path, 'rb') as f:
-                encrypted_data = f.read()
+            with open(wallet_path, 'r') as f:
+                encrypted_data = json.load(f)
             
-            encryption = Encryption(self.encryption_config)
-            decrypted_data = encryption.decrypt(encrypted_data, passphrase)
+            # Decrypt using password-based decryption
+            decrypted_data = self.encryption.decrypt_with_password(encrypted_data, passphrase)
             wallet_data = json.loads(decrypted_data)
             
             return Wallet(
@@ -386,6 +393,10 @@ class WalletManager:
         """Recover a wallet using its mnemonic phrase and passphrase."""
         wallet = Wallet.from_mnemonic(mnemonic_phrase, passphrase)
         
+        # Create restored wallets directory
+        restored_dir = os.path.join("chain", "restored")
+        os.makedirs(restored_dir, exist_ok=True)
+        
         # Save recovered wallet
         wallet_data = {
             'name': f"Recovered_{wallet.address[:8]}",
@@ -396,23 +407,32 @@ class WalletManager:
             'created_at': time.time()
         }
         
-        # Encrypt wallet data
-        encryption = Encryption(self.encryption_config)
-        encrypted_data = encryption.encrypt(json.dumps(wallet_data), passphrase)
+        # Encrypt wallet data using password-based encryption
+        encrypted_data = self.encryption.encrypt_with_password(
+            json.dumps(wallet_data),
+            passphrase
+        )
         
-        # Save encrypted wallet file
+        # Save encrypted wallet file to chain/restored directory
         wallet_file = f"Recovered_{wallet.address[:8]}.wallet"
-        wallet_path = os.path.join(self.storage_path, wallet_file)
-        os.makedirs(os.path.dirname(wallet_path), exist_ok=True)
-        with open(wallet_path, 'wb') as f:
-            f.write(encrypted_data)
+        wallet_path = os.path.join(restored_dir, wallet_file)
         
-        # Save public info to index
+        try:
+            with open(wallet_path, 'w') as f:
+                json.dump(encrypted_data, f)
+            print_success(f"Recovered wallet saved: {wallet_path}")
+        except Exception as e:
+            print_error(f"Failed to save recovered wallet: {e}")
+            raise
+        
+        # Save public info to main wallet index
         self.wallets[wallet.address] = {
             'name': wallet_data['name'],
             'address': wallet.address,
             'public_key': wallet.public_key,
-            'wallet_file': wallet_file
+            'wallet_file': wallet_path,  # Store full path for recovered wallets
+            'type': 'recovered',
+            'restored_at': time.time()
         }
         self.save_state()
         
