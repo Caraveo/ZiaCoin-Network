@@ -391,52 +391,96 @@ class WalletManager:
 
     def recover_wallet(self, mnemonic_phrase: str, passphrase: str) -> Wallet:
         """Recover a wallet using its mnemonic phrase and passphrase."""
-        wallet = Wallet.from_mnemonic(mnemonic_phrase, passphrase)
-        
-        # Create restored wallets directory
-        restored_dir = os.path.join("chain", "restored")
-        os.makedirs(restored_dir, exist_ok=True)
-        
-        # Save recovered wallet
-        wallet_data = {
-            'name': f"Recovered_{wallet.address[:8]}",
-            'address': wallet.address,
-            'public_key': wallet.public_key,
-            'private_key': wallet.private_key,
-            'mnemonic': wallet.mnemonic,
-            'created_at': time.time()
-        }
-        
-        # Encrypt wallet data using password-based encryption
-        encrypted_data = self.encryption.encrypt_with_password(
-            json.dumps(wallet_data),
-            passphrase
-        )
-        
-        # Save encrypted wallet file to chain/restored directory
-        wallet_file = f"Recovered_{wallet.address[:8]}.wallet"
-        wallet_path = os.path.join(restored_dir, wallet_file)
-        
         try:
-            with open(wallet_path, 'w') as f:
-                json.dump(encrypted_data, f)
-            print_success(f"Recovered wallet saved: {wallet_path}")
+            # Step 1: Validate mnemonic phrase first (before creating anything)
+            print_info("Validating mnemonic phrase...")
+            mnemonic = Mnemonic()
+            if not mnemonic.validate(mnemonic_phrase):
+                raise ValueError("Invalid mnemonic phrase")
+            
+            # Step 2: Test wallet creation from mnemonic (validation only)
+            print_info("Testing wallet derivation from mnemonic...")
+            test_wallet = Wallet.from_mnemonic(mnemonic_phrase, passphrase)
+            
+            # Step 3: Prepare directory structure
+            print_info("Preparing storage directory...")
+            restored_dir = os.path.join("chain", "restored")
+            os.makedirs(restored_dir, exist_ok=True)
+            
+            # Step 4: Check if wallet already exists
+            existing_wallet_info = self.wallets.get(test_wallet.address)
+            if existing_wallet_info:
+                print_warning(f"Wallet with address {test_wallet.address} already exists")
+                print_info("Loading existing wallet instead of creating new one")
+                return self.load_wallet(test_wallet.address, passphrase)
+            
+            # Step 5: Prepare wallet data
+            print_info("Preparing wallet data...")
+            wallet_data = {
+                'name': f"Recovered_{test_wallet.address[:8]}",
+                'address': test_wallet.address,
+                'public_key': test_wallet.public_key,
+                'private_key': test_wallet.private_key,
+                'mnemonic': test_wallet.mnemonic,
+                'created_at': time.time()
+            }
+            
+            # Step 6: Test encryption (before saving)
+            print_info("Testing encryption...")
+            encrypted_data = self.encryption.encrypt_with_password(
+                json.dumps(wallet_data),
+                passphrase
+            )
+            
+            # Step 7: Prepare file path
+            wallet_file = f"Recovered_{test_wallet.address[:8]}.wallet"
+            wallet_path = os.path.join(restored_dir, wallet_file)
+            
+            # Step 8: Save wallet file (atomic operation)
+            print_info("Saving recovered wallet...")
+            try:
+                with open(wallet_path, 'w') as f:
+                    json.dump(encrypted_data, f)
+                print_success(f"Recovered wallet saved: {wallet_path}")
+            except Exception as e:
+                print_error(f"Failed to save recovered wallet: {e}")
+                # Clean up any partial files
+                if os.path.exists(wallet_path):
+                    os.remove(wallet_path)
+                raise
+            
+            # Step 9: Update wallet index (only after successful save)
+            print_info("Updating wallet index...")
+            self.wallets[test_wallet.address] = {
+                'name': wallet_data['name'],
+                'address': test_wallet.address,
+                'public_key': test_wallet.public_key,
+                'wallet_file': wallet_path,  # Store full path for recovered wallets
+                'type': 'recovered',
+                'restored_at': time.time()
+            }
+            
+            # Step 10: Save wallet index
+            try:
+                self.save_state()
+                print_success("Wallet index updated successfully")
+            except Exception as e:
+                print_error(f"Failed to save wallet index: {e}")
+                # Clean up wallet file if index save fails
+                if os.path.exists(wallet_path):
+                    os.remove(wallet_path)
+                raise
+            
+            print_success("✅ Wallet recovery completed successfully!")
+            return test_wallet
+            
         except Exception as e:
-            print_error(f"Failed to save recovered wallet: {e}")
+            print_error(f"❌ Wallet recovery failed: {e}")
+            # Ensure no partial data is left behind
+            if 'test_wallet' in locals() and 'wallet_path' in locals():
+                if os.path.exists(wallet_path):
+                    os.remove(wallet_path)
             raise
-        
-        # Save public info to main wallet index
-        self.wallets[wallet.address] = {
-            'name': wallet_data['name'],
-            'address': wallet.address,
-            'public_key': wallet.public_key,
-            'wallet_file': wallet_path,  # Store full path for recovered wallets
-            'type': 'recovered',
-            'restored_at': time.time()
-        }
-        self.save_state()
-        
-        return wallet
 
     def list_wallets(self):
         """List all wallets (public info only)."""

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 import sys
 import os
+import time
 
 # Add the modules directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 
 # Import the sync module
 from modules.sync.sync import CodeSync
+from modules.utils.print_utils import print_success, print_error, print_warning, print_info
 
 def check_sync():
     """Check if code is synchronized with remote repository."""
@@ -38,12 +40,23 @@ class Encryption:
     def _load_or_generate_keys(self):
         """Load existing keys or generate new ones if they don't exist."""
         if self.key_file.exists():
+            print_info(f"Loading existing master key from: {self.key_file}")
             self._load_keys()
+            print_success("Master key loaded successfully")
         else:
+            print_info(f"Generating new master key at: {self.key_file}")
             self._generate_keys()
+            print_success("New master key generated successfully")
 
     def _generate_keys(self):
         """Generate new encryption keys."""
+        # Check if keys already exist (double-check for safety)
+        if self.key_file.exists():
+            print_warning(f"Master key already exists at: {self.key_file}")
+            print_warning("Loading existing keys instead of generating new ones")
+            self._load_keys()
+            return
+        
         # Generate Fernet key for symmetric encryption
         self.fernet_key = Fernet.generate_key()
         self.fernet = Fernet(self.fernet_key)
@@ -59,11 +72,18 @@ class Encryption:
         # Generate AES key for private key encryption
         self.aes_key = os.urandom(32)  # 256-bit key
 
-        # Save keys
+        # Save keys with backup
         self._save_keys()
 
     def _save_keys(self):
-        """Save encryption keys to file."""
+        """Save encryption keys to file with backup protection."""
+        # Create backup of existing keys if they exist
+        if self.key_file.exists():
+            backup_file = self.key_file.with_suffix('.key.backup')
+            import shutil
+            shutil.copy2(self.key_file, backup_file)
+            print_warning(f"Existing master key backed up to: {backup_file}")
+        
         keys = {
             'fernet_key': base64.b64encode(self.fernet_key).decode('utf-8'),
             'private_key': self.private_key.private_bytes(
@@ -75,11 +95,19 @@ class Encryption:
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             ).decode('utf-8'),
-            'aes_key': base64.b64encode(self.aes_key).decode('utf-8')
+            'aes_key': base64.b64encode(self.aes_key).decode('utf-8'),
+            'created_at': time.time(),
+            'version': '1.0'
         }
         
-        with open(self.key_file, 'w') as f:
+        # Save to temporary file first, then move to final location
+        temp_file = self.key_file.with_suffix('.tmp')
+        with open(temp_file, 'w') as f:
             json.dump(keys, f, indent=4)
+        
+        # Atomic move to final location
+        temp_file.replace(self.key_file)
+        print_success(f"Master key saved to: {self.key_file}")
 
     def _load_keys(self):
         """Load encryption keys from file."""
@@ -242,6 +270,40 @@ class Encryption:
         
         decrypted = fernet.decrypt(base64.b64decode(encrypted_data['encrypted_data']))
         return decrypted.decode('utf-8')
+
+    def backup_master_key(self, backup_path: str = None):
+        """Create a backup of the master key."""
+        if not self.key_file.exists():
+            raise ValueError("No master key to backup")
+        
+        if backup_path is None:
+            timestamp = int(time.time())
+            backup_path = f"chain/keys/master.key.backup.{timestamp}"
+        
+        import shutil
+        shutil.copy2(self.key_file, backup_path)
+        print_success(f"Master key backed up to: {backup_path}")
+        return backup_path
+
+    def restore_master_key(self, backup_path: str):
+        """Restore master key from backup."""
+        if not os.path.exists(backup_path):
+            raise ValueError(f"Backup file not found: {backup_path}")
+        
+        # Create backup of current key if it exists
+        if self.key_file.exists():
+            current_backup = f"{self.key_file}.current_backup"
+            import shutil
+            shutil.copy2(self.key_file, current_backup)
+            print_warning(f"Current master key backed up to: {current_backup}")
+        
+        # Restore from backup
+        import shutil
+        shutil.copy2(backup_path, self.key_file)
+        print_success(f"Master key restored from: {backup_path}")
+        
+        # Reload keys
+        self._load_keys()
 
 def main():
     # Example usage
