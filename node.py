@@ -188,15 +188,119 @@ class Node:
         def get_status():
             """Get node status."""
             try:
+                # Get peer information
+                peer_list = self.peer_network.get_peer_list() if hasattr(self.peer_network, 'get_peer_list') else []
+                peer_count = len(peer_list)
+                
                 return jsonify({
                     'status': 'running',
+                    'node_type': 'initial' if self.is_initial_node else 'regular',
+                    'host': self.host,
+                    'port': self.port,
                     'block_height': len(self.blockchain.chain),
-                    'peers': len(self.peers),
-                    'pending_transactions': len(self.blockchain.pending_transactions)
+                    'peer_count': peer_count,
+                    'peers': peer_list,
+                    'pending_transactions': len(self.blockchain.pending_transactions),
+                    'mining_difficulty': self.mining_difficulty,
+                    'mining_reward': self.mining_reward,
+                    'is_initial_node': self.is_initial_node,
+                    'external_access': f"http://216.255.208.105:{self.port}" if self.is_initial_node else None
                 }), 200
             except Exception as e:
                 logger.error(f"Error getting status: {e}")
                 raise NodeError("Failed to get node status")
+
+        @self.app.route('/peers', methods=['GET'])
+        def get_peers():
+            """Get connected peers information."""
+            try:
+                peer_list = self.peer_network.get_peer_list() if hasattr(self.peer_network, 'get_peer_list') else []
+                return jsonify({
+                    'peer_count': len(peer_list),
+                    'peers': peer_list,
+                    'node_type': 'initial' if self.is_initial_node else 'regular',
+                    'host': self.host,
+                    'port': self.port
+                }), 200
+            except Exception as e:
+                logger.error(f"Error getting peers: {e}")
+                raise NodeError("Failed to get peer information")
+
+        @self.app.route('/peers/connect', methods=['POST'])
+        def connect_peer():
+            """Manually connect to a peer."""
+            try:
+                data = request.get_json()
+                if not data or 'host' not in data or 'port' not in data:
+                    raise NodeValidationError("Missing host or port in request")
+                
+                host = data['host']
+                port = int(data['port'])
+                
+                # Attempt to connect to peer
+                success = self.peer_network._connect_to_peer(host, port)
+                
+                if success:
+                    return jsonify({
+                        'message': f'Successfully connected to peer {host}:{port}',
+                        'peer': f'{host}:{port}',
+                        'status': 'connected'
+                    }), 200
+                else:
+                    return jsonify({
+                        'message': f'Failed to connect to peer {host}:{port}',
+                        'peer': f'{host}:{port}',
+                        'status': 'failed'
+                    }), 400
+            except ValueError as e:
+                raise NodeValidationError(str(e))
+            except Exception as e:
+                logger.error(f"Error connecting to peer: {e}")
+                raise NodeError("Failed to connect to peer")
+
+        @self.app.route('/network', methods=['GET'])
+        def get_network_info():
+            """Get detailed network information."""
+            try:
+                peer_list = self.peer_network.get_peer_list() if hasattr(self.peer_network, 'get_peer_list') else []
+                
+                # Calculate network statistics
+                active_peers = len([p for p in peer_list if p.get('is_active', True)])
+                inactive_peers = len([p for p in peer_list if not p.get('is_active', True)])
+                
+                return jsonify({
+                    'network_status': 'active',
+                    'node_type': 'initial' if self.is_initial_node else 'regular',
+                    'node_address': f"{self.host}:{self.port}",
+                    'total_peers': len(peer_list),
+                    'active_peers': active_peers,
+                    'inactive_peers': inactive_peers,
+                    'peer_details': peer_list,
+                    'initial_node': '216.255.208.105:9999',
+                    'is_connected_to_initial': any('216.255.208.105:9999' in str(p) for p in peer_list),
+                    'blockchain_height': len(self.blockchain.chain),
+                    'pending_transactions': len(self.blockchain.pending_transactions)
+                }), 200
+            except Exception as e:
+                logger.error(f"Error getting network info: {e}")
+                raise NodeError("Failed to get network information")
+
+        @self.app.route('/network/stats', methods=['GET'])
+        def get_network_stats():
+            """Get network statistics."""
+            try:
+                stats = self.peer_network.get_network_stats() if hasattr(self.peer_network, 'get_network_stats') else {}
+                return jsonify({
+                    'network_statistics': stats,
+                    'node_info': {
+                        'type': 'initial' if self.is_initial_node else 'regular',
+                        'address': f"{self.host}:{self.port}",
+                        'is_initial_node': self.is_initial_node
+                    }
+                }), 200
+            except Exception as e:
+                logger.error(f"Error getting network stats: {e}")
+                raise NodeError("Failed to get network statistics")
 
         @self.app.route('/balance/<address>', methods=['GET'])
         def get_balance(address):
@@ -280,6 +384,26 @@ class Node:
             print_info(f"Listening on {self.host}:{self.port}")
             print_info(f"Blockchain difficulty: {self.mining_difficulty}")
             print_info(f"Mining reward: {self.mining_reward}")
+            
+            # Display peer information
+            if hasattr(self.peer_network, 'get_network_stats'):
+                stats = self.peer_network.get_network_stats()
+                print_info(f"Network Status: {stats.get('connection_rate', '0/0')} peers connected")
+                if self.is_initial_node:
+                    print_info("🌐 Initial Node Mode - Other nodes will connect to this node")
+                else:
+                    print_info("🔗 Regular Node Mode - Connected to initial node")
+            
+            # Display API endpoints
+            print_info("📡 Available API Endpoints:")
+            print_info("  └─ GET  /status          - Node status and peer count")
+            print_info("  └─ GET  /peers           - Connected peers list")
+            print_info("  └─ GET  /network         - Detailed network information")
+            print_info("  └─ GET  /network/stats   - Network statistics")
+            print_info("  └─ GET  /chain           - Full blockchain")
+            print_info("  └─ GET  /balance/<addr>  - Wallet balance")
+            print_info("  └─ POST /transaction     - Create new transaction")
+            print_info("  └─ POST /peers/connect   - Manually connect to peer")
             
             self.app.run(
                 host=self.host,

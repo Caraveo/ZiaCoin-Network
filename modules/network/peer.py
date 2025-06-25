@@ -166,12 +166,46 @@ class PeerNetwork:
                     timeout=5
                 )
                 if response.status_code == 200:
-                    self.peers.add(peer)
-                    print_success(f"Connected to peer: {peer}")
+                    # Get peer information from status response
+                    peer_data = response.json()
+                    
+                    # Create peer object with detailed information
+                    new_peer = Peer(
+                        host=host,
+                        port=port,
+                        last_seen=time.time(),
+                        version=peer_data.get('version', '1.0.0'),
+                        height=peer_data.get('block_height', 0),
+                        is_active=True
+                    )
+                    
+                    self.peers.add(new_peer)
+                    self.log_peer_connection(host, port, True, "Status check successful")
+                    
+                    # Log additional peer information
+                    print_info(f"  └─ Node Type: {peer_data.get('node_type', 'unknown')}")
+                    print_info(f"  └─ Block Height: {peer_data.get('block_height', 0)}")
+                    print_info(f"  └─ Peer Count: {peer_data.get('peer_count', 0)}")
+                    
                     return True
+                else:
+                    self.log_peer_connection(host, port, False, f"HTTP {response.status_code}")
+                    return False
+            else:
+                # Peer already exists, update last seen
+                for existing_peer in self.peers:
+                    if existing_peer.host == host and existing_peer.port == port:
+                        existing_peer.last_seen = time.time()
+                        break
+                return True
+        except requests.exceptions.ConnectionError:
+            self.log_peer_connection(host, port, False, "Connection refused")
+            return False
+        except requests.exceptions.Timeout:
+            self.log_peer_connection(host, port, False, "Connection timeout")
             return False
         except Exception as e:
-            print_warning(f"Failed to connect to peer {host}:{port}: {e}")
+            self.log_peer_connection(host, port, False, str(e))
             return False
 
     def _sync_with_peers(self) -> None:
@@ -181,7 +215,7 @@ class PeerNetwork:
                 try:
                     # Get peer's chain
                     response = requests.get(
-                        f"http://{peer}/chain",
+                        f"http://{peer.host}:{peer.port}/chain",
                         timeout=5
                     )
                     if response.status_code == 200:
@@ -561,18 +595,64 @@ class PeerNetwork:
             return len(self.peers)
 
     def get_peer_list(self) -> List[Dict[str, Any]]:
-        """Get a list of all connected peers."""
+        """Get a list of all connected peers with detailed information."""
         with self.lock:
-            return [
-                {
+            peer_list = []
+            for peer in self.peers:
+                # Calculate time since last seen
+                time_since_last_seen = time.time() - peer.last_seen
+                connection_status = "active" if time_since_last_seen < 300 else "inactive"  # 5 minutes threshold
+                
+                peer_info = {
                     'host': peer.host,
                     'port': peer.port,
+                    'address': f"{peer.host}:{peer.port}",
                     'version': peer.version,
                     'height': peer.height,
-                    'last_seen': peer.last_seen
+                    'last_seen': peer.last_seen,
+                    'time_since_last_seen': round(time_since_last_seen, 2),
+                    'is_active': peer.is_active,
+                    'connection_status': connection_status,
+                    'is_initial_node': peer.host == "216.255.208.105" and peer.port == 9999
                 }
-                for peer in self.peers
-            ]
+                peer_list.append(peer_info)
+            
+            # Sort by last seen time (most recent first)
+            peer_list.sort(key=lambda x: x['last_seen'], reverse=True)
+            return peer_list
+
+    def log_peer_connection(self, host: str, port: int, success: bool, reason: str = ""):
+        """Log peer connection attempts and results."""
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        if success:
+            print_success(f"[{timestamp}] ✓ Peer connected: {host}:{port}")
+            self.logger.info(f"Peer connected: {host}:{port}")
+        else:
+            print_warning(f"[{timestamp}] ✗ Peer connection failed: {host}:{port} - {reason}")
+            self.logger.warning(f"Peer connection failed: {host}:{port} - {reason}")
+
+    def log_peer_disconnection(self, host: str, port: int, reason: str = ""):
+        """Log peer disconnections."""
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        print_warning(f"[{timestamp}] ⚠ Peer disconnected: {host}:{port} - {reason}")
+        self.logger.warning(f"Peer disconnected: {host}:{port} - {reason}")
+
+    def get_network_stats(self) -> Dict[str, Any]:
+        """Get detailed network statistics."""
+        with self.lock:
+            peer_list = self.get_peer_list()
+            active_peers = len([p for p in peer_list if p['is_active'] and p['connection_status'] == 'active'])
+            inactive_peers = len([p for p in peer_list if not p['is_active'] or p['connection_status'] == 'inactive'])
+            initial_node_connected = any(p['is_initial_node'] for p in peer_list)
+            
+            return {
+                'total_peers': len(peer_list),
+                'active_peers': active_peers,
+                'inactive_peers': inactive_peers,
+                'initial_node_connected': initial_node_connected,
+                'connection_rate': f"{active_peers}/{len(peer_list)}" if peer_list else "0/0",
+                'last_updated': time.time()
+            }
 
 async def main():
     # Example usage
