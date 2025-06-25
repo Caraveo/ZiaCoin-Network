@@ -15,6 +15,11 @@ from flask import Flask, request, jsonify
 from werkzeug.exceptions import HTTPException
 from colorama import init, Fore, Style
 from modules.utils.print_utils import print_success, print_error, print_warning, print_info
+from datetime import datetime
+
+# Suppress Flask development server warning
+os.environ['WERKZEUG_RUN_MAIN'] = 'true'
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 # Initialize colorama
 init()

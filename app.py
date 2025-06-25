@@ -5,6 +5,10 @@ import json
 import logging
 from typing import Dict, Any
 
+# Suppress Flask development server warning
+os.environ['WERKZEUG_RUN_MAIN'] = 'true'
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
 # Add the modules directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
 
