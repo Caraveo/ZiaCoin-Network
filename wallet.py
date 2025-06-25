@@ -323,6 +323,7 @@ def main():
     
     parser = argparse.ArgumentParser(description='ZiaCoin Wallet CLI')
     parser.add_argument('--update', action='store_true', help='Update to the latest version')
+    parser.add_argument('--node', type=str, help='Node address (host:port) - defaults to localhost:9999 if not specified')
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # Create wallet record command
@@ -355,6 +356,33 @@ def main():
     recover_parser.add_argument('passphrase', help='Wallet passphrase')
 
     args = parser.parse_args()
+
+    # Handle node configuration
+    if args.node:
+        try:
+            # Parse node address (host:port)
+            if ':' in args.node:
+                host, port_str = args.node.split(':', 1)
+                port = int(port_str)
+                config['node']['host'] = host
+                config['node']['port'] = port
+                print_info(f"Using specified node: {host}:{port}")
+            else:
+                # If only host is provided, use default port
+                config['node']['host'] = args.node
+                config['node']['port'] = 9999
+                print_info(f"Using specified node: {args.node}:9999")
+        except ValueError:
+            print_error("Invalid node format. Use host:port (e.g., localhost:9999 or 216.255.208.105:9999)")
+            sys.exit(1)
+    else:
+        # Use localhost as default if no node host is configured
+        if not config['node']['host'] or config['node']['host'] == '':
+            config['node']['host'] = 'localhost'
+            config['node']['port'] = 9999
+            print_info("No node specified, using default: localhost:9999")
+        else:
+            print_info(f"Using configured node: {config['node']['host']}:{config['node']['port']}")
 
     try:
         if args.update:
