@@ -18,7 +18,6 @@ from modules.utils.print_utils import print_success, print_error, print_warning,
 from datetime import datetime
 
 # Suppress Flask development server warning
-os.environ['WERKZEUG_RUN_MAIN'] = 'true'
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 # Initialize colorama
@@ -280,7 +279,9 @@ class Node:
                 host=self.host,
                 port=self.port,
                 debug=False,  # Disable debug mode in production
-                threaded=True  # Enable threading for better performance
+                threaded=True,  # Enable threading for better performance
+                use_reloader=False,  # Disable reloader to prevent duplicate processes
+                passthrough_errors=True  # Pass through errors instead of handling them
             )
         except Exception as e:
             print_error(f"Failed to start node: {e}")

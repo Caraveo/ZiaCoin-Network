@@ -6,7 +6,6 @@ import logging
 from typing import Dict, Any
 
 # Suppress Flask development server warning
-os.environ['WERKZEUG_RUN_MAIN'] = 'true'
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 # Add the modules directory to the Python path
@@ -169,4 +168,11 @@ def validate_chain() -> tuple[Dict[str, Any], int]:
         return jsonify({'error': 'Failed to validate chain'}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(
+        host='0.0.0.0', 
+        port=5000, 
+        debug=False,  # Disable debug mode in production
+        threaded=True,  # Enable threading for better performance
+        use_reloader=False,  # Disable reloader to prevent duplicate processes
+        passthrough_errors=True  # Pass through errors instead of handling them
+    )
