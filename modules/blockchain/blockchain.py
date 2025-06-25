@@ -71,6 +71,7 @@ class Block:
     nonce: int = 0
     difficulty: int = 4  # Number of leading zeros required
     merkle_root: str = ""  # Added merkle_root field
+    block_hash: str = ""  # Store the calculated hash
 
     def to_dict(self) -> Dict:
         return {
@@ -103,6 +104,35 @@ class Block:
                 break
             self.nonce += 1
 
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'Block':
+        """Create a Block instance from a dictionary."""
+        # Convert transaction dicts back to Transaction objects
+        transactions = []
+        for tx_data in data.get('transactions', []):
+            if isinstance(tx_data, dict):
+                tx = Transaction(
+                    sender=tx_data.get('sender', ''),
+                    recipient=tx_data.get('recipient', ''),
+                    amount=tx_data.get('amount', 0.0),
+                    timestamp=tx_data.get('timestamp', time.time()),
+                    signature=tx_data.get('signature')
+                )
+                transactions.append(tx)
+            else:
+                transactions.append(tx_data)
+        
+        return cls(
+            index=data.get('index', 0),
+            timestamp=data.get('timestamp', time.time()),
+            transactions=transactions,
+            previous_hash=data.get('previous_hash', ''),
+            nonce=data.get('nonce', 0),
+            difficulty=data.get('difficulty', 4),
+            merkle_root=data.get('merkle_root', ''),
+            block_hash=data.get('hash', '')
+        )
+
 class Blockchain:
     def __init__(self):
         self.chain = []
@@ -119,7 +149,7 @@ class Blockchain:
                     data = json.load(f)
                     self.chain = [Block.from_dict(block) for block in data.get('chain', [])]
                     self.pending_transactions = data.get('pending_transactions', [])
-                    self.storage = data.get('storage', {})
+                    # Don't try to load storage from JSON
                 print_success("Blockchain loaded from storage")
             else:
                 # Create new chain if none exists
@@ -133,11 +163,43 @@ class Blockchain:
     def save_state(self) -> bool:
         """Save the current state of the blockchain."""
         try:
+            # Create a safe copy of the chain data
+            chain_data = []
+            for block in self.chain:
+                try:
+                    block_dict = {
+                        'index': block.index,
+                        'timestamp': block.timestamp,
+                        'transactions': [tx.to_dict() if hasattr(tx, 'to_dict') else tx for tx in block.transactions],
+                        'previous_hash': block.previous_hash,
+                        'nonce': block.nonce,
+                        'difficulty': block.difficulty,
+                        'merkle_root': block.merkle_root,
+                        'hash': block.block_hash if block.block_hash else block.hash()
+                    }
+                    chain_data.append(block_dict)
+                except Exception as e:
+                    print_warning(f"Error serializing block {getattr(block, 'index', 'unknown')}: {e}")
+                    continue
+            
+            # Create safe copy of pending transactions
+            pending_data = []
+            for tx in self.pending_transactions:
+                try:
+                    if hasattr(tx, 'to_dict'):
+                        pending_data.append(tx.to_dict())
+                    else:
+                        pending_data.append(tx)
+                except Exception as e:
+                    print_warning(f"Error serializing transaction: {e}")
+                    continue
+            
             data = {
-                'chain': [block.to_dict() for block in self.chain],
-                'pending_transactions': self.pending_transactions,
-                'storage': self.storage
+                'chain': chain_data,
+                'pending_transactions': pending_data,
+                'storage': {}  # Store empty dict instead of storage object
             }
+            
             with open('blockchain.json', 'w') as f:
                 json.dump(data, f, indent=4)
             print_success("Blockchain state saved")
@@ -155,7 +217,7 @@ class Blockchain:
             previous_hash='0' * 64,
             nonce=0
         )
-        genesis_block.hash = genesis_block.hash()
+        genesis_block.block_hash = genesis_block.hash()
         self.chain.append(genesis_block)
         print_success("Genesis block created")
 
@@ -183,12 +245,12 @@ class Blockchain:
                 previous_block = self.chain[i-1]
 
                 # Verify current block's hash
-                if current_block.hash != current_block.hash():
+                if current_block.block_hash != current_block.hash():
                     print_warning(f"Invalid hash in block {i}")
                     return False
 
                 # Verify block's previous hash
-                if current_block.previous_hash != previous_block.hash:
+                if current_block.previous_hash != previous_block.block_hash:
                     print_warning(f"Invalid previous hash in block {i}")
                     return False
 
@@ -206,7 +268,7 @@ class Blockchain:
                     data = json.load(f)
                     self.chain = [Block.from_dict(block) for block in data.get('chain', [])]
                     self.pending_transactions = data.get('pending_transactions', [])
-                    self.storage = data.get('storage', {})
+                    # Don't try to load storage from JSON
                 print_success("Blockchain recovered from backup")
                 return True
             return False
@@ -231,7 +293,7 @@ class Blockchain:
             index=previous_block.index + 1,
             timestamp=time.time(),
             transactions=self.pending_transactions,
-            previous_hash=previous_block.hash(),
+            previous_hash=previous_block.block_hash,
             nonce=0,
             difficulty=self.difficulty
         )
@@ -267,7 +329,7 @@ class Blockchain:
                 return False
 
             # Verify previous hash
-            if current.previous_hash != previous.hash():
+            if current.previous_hash != previous.block_hash:
                 return False
 
         return True 

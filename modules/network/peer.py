@@ -36,6 +36,7 @@ class PeerNetwork:
         self.port = 8333
         self.node_id = hashlib.sha256(f"{self.host}:{self.port}".encode()).hexdigest()
         self.bootstrap_nodes = [
+            {"host": "216.255.208.105", "port": 9999},
             {"host": "seed1.ziacoin.net", "port": 8333},
             {"host": "seed2.ziacoin.net", "port": 8333}
         ]

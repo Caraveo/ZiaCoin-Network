@@ -1,0 +1,16 @@
+{
+    "chain": [
+        {
+            "index": 0,
+            "timestamp": 1750824772.650367,
+            "transactions": [],
+            "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "nonce": 0,
+            "difficulty": 4,
+            "merkle_root": "",
+            "hash": "f8636787a6fcef9338fb77eec2b296694da5e93dee2cd27489f52d96bf27df16"
+        }
+    ],
+    "pending_transactions": [],
+    "storage": {}
+}

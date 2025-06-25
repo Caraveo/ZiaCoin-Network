@@ -35,6 +35,7 @@ env/
 chain.config
 kuber/
 wallets/
+wallets.backup/
 *.log
 .DS_Store
 

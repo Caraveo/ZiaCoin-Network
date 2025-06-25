@@ -8,6 +8,7 @@ import sys
 import time
 import signal
 import threading
+import requests
 from typing import List, Optional, Dict, Any
 from aiohttp import web
 from flask import Flask, request, jsonify
@@ -335,7 +336,7 @@ class Node:
             
             # Stop components
             try:
-                self.miner.stop()
+                self.miner.stop_mining()
             except Exception as e:
                 print_error(f"Error stopping miner: {e}")
             
@@ -453,10 +454,29 @@ def main():
         # Parse command line arguments
         parser = argparse.ArgumentParser(description='ZiaCoin Node')
         parser.add_argument('--genesis', action='store_true', help='Create genesis block')
+        parser.add_argument('--bootstrap', action='store_true', help='Run as bootstrap node')
+        parser.add_argument('--port', type=int, help='Port to run the node on')
+        parser.add_argument('--host', type=str, help='Host to bind the node to')
         args = parser.parse_args()
 
         # Load configuration
         config = load_config()
+        
+        # Override config with command line arguments
+        if args.port:
+            config['node']['port'] = args.port
+        if args.host:
+            config['node']['host'] = args.host
+        if args.bootstrap:
+            # Set as bootstrap node
+            config['node']['host'] = args.host or config['node']['host']
+            config['node']['port'] = args.port or config['node']['port']
+            # Add external IP as first peer for other nodes to connect to
+            external_peer = "216.255.208.105:9999"
+            if external_peer not in config['node']['peers']:
+                config['node']['peers'].insert(0, external_peer)
+            print_success(f"Starting as bootstrap node on {config['node']['host']}:{config['node']['port']}")
+            print_info(f"External access: http://216.255.208.105:9999")
         
         # Create node instance
         node = Node(config)
