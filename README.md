@@ -2,6 +2,13 @@
 
 A modern, secure, and efficient blockchain implementation built with Python. ZiaCoin Network provides a robust foundation for decentralized applications with features like secure wallet management, efficient mining, and peer-to-peer networking.
 
+## 📊 Network Status
+
+| Network | Status | Last Updated |
+|---------|--------|--------------|
+| **ZiaMain** | <span style="color: red;">🔴 OFFLINE</span> | 2025-06-25 |
+
+---
 
 # 🚀Zia: The Future of Lightweight Blockchain
 
@@ -314,4 +321,4 @@ When using the API server (`python node.py --api`), the following endpoints are 
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+This project is licensed under the ZIA "ToL" License - see the [LICENSE](LICENSE) file for details. 
