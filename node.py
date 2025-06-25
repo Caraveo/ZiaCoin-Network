@@ -609,6 +609,7 @@ def main():
         parser.add_argument('--genesis', action='store_true', help='Create genesis block')
         parser.add_argument('--init', action='store_true', help='Run as initial bootstrap node (216.255.208.105)')
         parser.add_argument('--bootstrap', action='store_true', help='Run as bootstrap node')
+        parser.add_argument('--test', action='store_true', help='Run in test mode - connect to test initial node')
         parser.add_argument('--port', type=int, help='Port to run the node on')
         parser.add_argument('--host', type=str, help='Host to bind the node to')
         args = parser.parse_args()
@@ -643,7 +644,14 @@ def main():
         else:
             # Regular node - MUST connect to initial node first
             print_info("Regular node mode - attempting to connect to initial node...")
-            initial_node = "216.255.208.105:9999"
+            
+            # Determine initial node based on test mode
+            if args.test:
+                initial_node = "192.168.1.236:9999"  # Test initial node IP
+                print_info("🧪 Test mode - connecting to test initial node")
+            else:
+                initial_node = "216.255.208.105:9999"  # Mainnet initial node
+                print_info("🌐 Mainnet mode - connecting to mainnet initial node")
             
             # Test connection to initial node
             try:
@@ -661,7 +669,10 @@ def main():
             except requests.exceptions.ConnectionError:
                 print_error(f"✗ Failed to connect to initial node: {initial_node}")
                 print_error("Cannot start node without connection to initial node")
-                print_error("Make sure the initial node (216.255.208.105:9999) is running")
+                if args.test:
+                    print_error("Make sure the test initial node (192.168.1.236:9999) is running")
+                else:
+                    print_error("Make sure the initial node (216.255.208.105:9999) is running")
                 sys.exit(1)
             except requests.exceptions.Timeout:
                 print_error(f"✗ Timeout connecting to initial node: {initial_node}")
