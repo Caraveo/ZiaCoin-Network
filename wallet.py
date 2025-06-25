@@ -104,16 +104,28 @@ def load_wallet_config() -> Dict[str, Any]:
 def check_node_connection(config: Dict[str, Any]) -> bool:
     """Check if the node is running and accessible."""
     try:
-        response = requests.get(
-            f"http://{config['node']['host']}:{config['node']['port']}/status",
-            timeout=5
-        )
-        if response.status_code == 200:
-            print_success("Node connection established")
-            return True
+        # Check if this is a local connection
+        if config['node']['host'] == 'localhost' and config['node']['port'] == 9999:
+            # Try direct connection to node backend
+            from modules.node_interface import is_local_node_available
+            if is_local_node_available():
+                print_success("Direct connection to node backend established")
+                return True
+            else:
+                print_error("Local node backend not available. Is the node running?")
+                return False
         else:
-            print_error(f"Node returned status code: {response.status_code}")
-            return False
+            # Remote connection - use HTTP
+            response = requests.get(
+                f"http://{config['node']['host']}:{config['node']['port']}/status",
+                timeout=5
+            )
+            if response.status_code == 200:
+                print_success("HTTP connection to node established")
+                return True
+            else:
+                print_error(f"Node returned status code: {response.status_code}")
+                return False
     except requests.exceptions.ConnectionError:
         print_error("Could not connect to node. Is it running?")
         return False
@@ -185,16 +197,34 @@ def get_balance(args, config: Dict[str, Any]):
         sys.exit(1)
         
     try:
-        response = requests.get(
-            f"http://{config['node']['host']}:{config['node']['port']}/balance/{args.address}",
-            timeout=5
-        )
-        if response.status_code == 200:
-            balance = response.json()['balance']
-            print_success(f"\nBalance for {args.address}:")
-            print_info(f"{balance} ZIA")
+        # Check if this is a local connection
+        if config['node']['host'] == 'localhost' and config['node']['port'] == 9999:
+            # Use direct node interface
+            from modules.node_interface import get_node_interface
+            interface = get_node_interface()
+            if interface:
+                result = interface.get_balance(args.address)
+                if 'error' in result:
+                    print_error(f"Failed to get balance: {result['error']}")
+                    sys.exit(1)
+                balance = result['balance']
+                print_success(f"\nBalance for {args.address}:")
+                print_info(f"{balance} ZIA")
+            else:
+                print_error("Failed to get node interface")
+                sys.exit(1)
         else:
-            print_error(f"Failed to get balance: {response.text}")
+            # Use HTTP API
+            response = requests.get(
+                f"http://{config['node']['host']}:{config['node']['port']}/balance/{args.address}",
+                timeout=5
+            )
+            if response.status_code == 200:
+                balance = response.json()['balance']
+                print_success(f"\nBalance for {args.address}:")
+                print_info(f"{balance} ZIA")
+            else:
+                print_error(f"Failed to get balance: {response.text}")
     except Exception as e:
         print_error(f"Error checking balance: {e}")
         sys.exit(1)
@@ -213,7 +243,7 @@ def send_transaction(args, config: Dict[str, Any]):
         )
         wallet = wallet_manager.load_wallet(args.from_address, args.passphrase)
         
-        # Create transaction
+        # Create transaction data
         transaction_data = {
             'sender': wallet.public_key,
             'recipient': args.to_address,
@@ -221,19 +251,38 @@ def send_transaction(args, config: Dict[str, Any]):
             'private_key': wallet.private_key
         }
         
-        response = requests.post(
-            f"http://{config['node']['host']}:{config['node']['port']}/transaction",
-            json=transaction_data,
-            timeout=5
-        )
-        
-        if response.status_code == 201:
-            print_success("\nTransaction Sent Successfully!")
-            print_info(f"From: {args.from_address}")
-            print_info(f"To: {args.to_address}")
-            print_info(f"Amount: {args.amount} ZIA")
+        # Check if this is a local connection
+        if config['node']['host'] == 'localhost' and config['node']['port'] == 9999:
+            # Use direct node interface
+            from modules.node_interface import get_node_interface
+            interface = get_node_interface()
+            if interface:
+                result = interface.create_transaction(transaction_data)
+                if 'error' in result:
+                    print_error(f"Failed to send transaction: {result['error']}")
+                    sys.exit(1)
+                print_success("\nTransaction Sent Successfully!")
+                print_info(f"From: {args.from_address}")
+                print_info(f"To: {args.to_address}")
+                print_info(f"Amount: {args.amount} ZIA")
+            else:
+                print_error("Failed to get node interface")
+                sys.exit(1)
         else:
-            print_error(f"Failed to send transaction: {response.text}")
+            # Use HTTP API
+            response = requests.post(
+                f"http://{config['node']['host']}:{config['node']['port']}/transaction",
+                json=transaction_data,
+                timeout=5
+            )
+            
+            if response.status_code == 201:
+                print_success("\nTransaction Sent Successfully!")
+                print_info(f"From: {args.from_address}")
+                print_info(f"To: {args.to_address}")
+                print_info(f"Amount: {args.amount} ZIA")
+            else:
+                print_error(f"Failed to send transaction: {response.text}")
     except ValueError as e:
         print_error(f"Invalid input: {e}")
         sys.exit(1)
@@ -323,7 +372,7 @@ def main():
     
     parser = argparse.ArgumentParser(description='ZiaCoin Wallet CLI')
     parser.add_argument('--update', action='store_true', help='Update to the latest version')
-    parser.add_argument('--node', type=str, help='Node address (host:port) - defaults to localhost:9999 if not specified')
+    parser.add_argument('--node', type=str, help='Remote API server address (host:port) - uses HTTP connection')
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # Create wallet record command
@@ -360,29 +409,33 @@ def main():
     # Handle node configuration
     if args.node:
         try:
-            # Parse node address (host:port)
+            # Parse remote API server address (host:port)
             if ':' in args.node:
                 host, port_str = args.node.split(':', 1)
                 port = int(port_str)
                 config['node']['host'] = host
                 config['node']['port'] = port
-                print_info(f"Using specified node: {host}:{port}")
+                print_info(f"Using remote API server: {host}:{port} (HTTP connection)")
             else:
-                # If only host is provided, use default port
+                # If only host is provided, use default API port
                 config['node']['host'] = args.node
-                config['node']['port'] = 9999
-                print_info(f"Using specified node: {args.node}:9999")
+                config['node']['port'] = 8000
+                print_info(f"Using remote API server: {args.node}:8000 (HTTP connection)")
         except ValueError:
-            print_error("Invalid node format. Use host:port (e.g., localhost:9999 or 216.255.208.105:9999)")
+            print_error("Invalid API server format. Use host:port (e.g., localhost:8000 or 216.255.208.105:8000)")
             sys.exit(1)
     else:
-        # Use localhost as default if no node host is configured
+        # Use local node backend by default (direct connection)
         if not config['node']['host'] or config['node']['host'] == '':
             config['node']['host'] = 'localhost'
             config['node']['port'] = 9999
-            print_info("No node specified, using default: localhost:9999")
+            print_info("No remote server specified, using local node backend: localhost:9999 (direct connection)")
         else:
             print_info(f"Using configured node: {config['node']['host']}:{config['node']['port']}")
+            if config['node']['host'] == 'localhost' and config['node']['port'] == 9999:
+                print_info("Connecting directly to local node backend")
+            else:
+                print_info("Connecting to remote node via HTTP")
 
     try:
         if args.update:

@@ -201,18 +201,29 @@ class WalletManager:
     def _load_wallets(self) -> None:
         """Load all wallets from storage."""
         try:
+            print_info(f"[DEBUG] Loading wallets from: {self.storage_path}")
             index_path = os.path.join(self.storage_path, "index.json")
+            print_info(f"[DEBUG] Looking for index file: {index_path}")
+            
             if os.path.exists(index_path):
+                print_info("[DEBUG] Index file found, loading wallets...")
                 with open(index_path, 'r') as f:
                     index = json.load(f)
                     self.wallets = index.get("wallets", {})
                 print_success(f"Loaded {len(self.wallets)} wallets")
+                
+                # List the loaded wallets
+                for address, info in self.wallets.items():
+                    print_info(f"  - {info.get('name', 'Unknown')}: {address}")
             else:
                 # Initialize empty wallet list if no index exists
+                print_warning("[DEBUG] No wallet index found")
                 self.wallets = {}
                 print_info("No wallet index found, starting with empty wallet list")
         except Exception as e:
             print_error(f"Failed to load wallets: {e}")
+            import traceback
+            print_error(f"Traceback: {traceback.format_exc()}")
             # Initialize empty wallet list on error
             self.wallets = {}
 

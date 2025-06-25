@@ -143,10 +143,16 @@ class Blockchain:
     def initialize(self) -> bool:
         """Initialize the blockchain."""
         try:
+            print_info("Initializing blockchain...")
+            
             # Try to load existing chain from ChainStorage first
+            print_info("Loading existing blocks from ChainStorage...")
             existing_blocks = self.storage.load_chain()
+            print_info(f"Found {len(existing_blocks)} existing blocks")
+            
             if existing_blocks:
                 # Convert block dicts back to Block objects
+                print_info("Converting blocks to Block objects...")
                 self.chain = [Block.from_dict(block) for block in existing_blocks]
                 print_success(f"Blockchain loaded from ChainStorage: {len(self.chain)} blocks")
             else:
@@ -156,17 +162,25 @@ class Blockchain:
                     self._migrate_from_old_format()
                 else:
                     # Create new chain if none exists
+                    print_info("No existing blocks found, creating genesis block...")
                     self.create_genesis_block()
                     print_success("New blockchain initialized")
             
             # Load pending transactions from chain state
+            print_info("Loading chain state...")
             chain_state = self.storage.load_chain_state()
             if chain_state:
                 self.pending_transactions = chain_state.get('pending_transactions', [])
+                print_info(f"Loaded {len(self.pending_transactions)} pending transactions")
+            else:
+                print_info("No chain state found, starting with empty pending transactions")
             
+            print_success("Blockchain initialization completed successfully")
             return True
         except Exception as e:
             print_error(f"Failed to initialize blockchain: {e}")
+            import traceback
+            print_error(f"Traceback: {traceback.format_exc()}")
             return False
 
     def _migrate_from_old_format(self) -> bool:

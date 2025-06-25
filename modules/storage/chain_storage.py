@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import shutil
 from ..encryption import Encryption
+from modules.utils.print_utils import print_success, print_error, print_warning, print_info
 
 class ChainStorage:
     def __init__(self, chain_dir: str = "chain"):
@@ -173,16 +174,38 @@ class ChainStorage:
     def load_chain(self) -> list:
         """Load the entire blockchain from disk, sorted by block index."""
         blocks = []
-        if not self.blocks_dir.exists():
+        try:
+            if not self.blocks_dir.exists():
+                print_info("Blocks directory does not exist")
+                return blocks
+                
+            print_info(f"Scanning blocks directory: {self.blocks_dir}")
+            block_files = list(self.blocks_dir.glob("*.json"))
+            print_info(f"Found {len(block_files)} block files")
+            
+            for block_file in block_files:
+                try:
+                    print_info(f"Loading block file: {block_file.name}")
+                    with open(block_file, "r") as f:
+                        data = json.load(f)
+                        encrypted_data = data['encrypted_data']
+                        decrypted_data = self.encryption.decrypt_symmetric(encrypted_data)
+                        block = json.loads(decrypted_data)
+                        blocks.append(block)
+                        print_info(f"Successfully loaded block {block.get('index', 'unknown')}")
+                except Exception as e:
+                    print_error(f"Failed to load block file {block_file.name}: {e}")
+                    # Continue loading other blocks
+                    continue
+                    
+            sorted_blocks = sorted(blocks, key=lambda x: x['index'])
+            print_info(f"Successfully loaded {len(sorted_blocks)} blocks")
+            return sorted_blocks
+        except Exception as e:
+            print_error(f"Error in load_chain: {e}")
+            import traceback
+            print_error(f"Traceback: {traceback.format_exc()}")
             return blocks
-        for block_file in self.blocks_dir.glob("*.json"):
-            with open(block_file, "r") as f:
-                data = json.load(f)
-                encrypted_data = data['encrypted_data']
-                decrypted_data = self.encryption.decrypt_symmetric(encrypted_data)
-                block = json.loads(decrypted_data)
-                blocks.append(block)
-        return sorted(blocks, key=lambda x: x['index'])
 
 def main():
     # Example usage
